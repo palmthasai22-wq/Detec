@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Copy, RefreshCw, Share2, EyeOff, Facebook, MessageCircle, MessageSquare, X, Code } from 'lucide-react';
+import { Copy, RefreshCw, Share2, EyeOff, Globe, MessageCircle, MessageSquare, X, Code } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -105,7 +105,7 @@ export const ShareManager: React.FC<ShareManagerProps> = ({
               </div>
               <div className="flex flex-col items-center gap-2 cursor-pointer group">
                 <div className="w-14 h-14 rounded-full bg-[#3b5998] flex items-center justify-center transition-transform group-hover:scale-105">
-                  <Facebook size={24} className="text-white fill-white" />
+                  <Globe size={24} className="text-white" />
                 </div>
                 <span className="text-xs text-gray-300">Facebook</span>
               </div>

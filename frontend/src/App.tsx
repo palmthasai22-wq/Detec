@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import CameraManager from './components/CameraManager';
 import UploadAnalyzer from './components/UploadAnalyzer';
 import LogsView from './components/LogsView';
-import PublicViewer from './components/PublicViewer';
+import { PublicViewer } from './components/PublicViewer';
 import Login from './components/Login';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {

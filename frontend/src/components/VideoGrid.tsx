@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ChannelTile, Channel } from './ChannelTile';
+import { ChannelTile } from './ChannelTile';
+import type { Channel } from './ChannelTile';
 
 type Layout = 1 | 2 | 3 | 4;
 

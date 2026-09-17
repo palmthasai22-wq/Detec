@@ -130,7 +130,7 @@ export const AnalyticsDashboard: React.FC = () => {
                 tick={{ fontSize: 12, fill: '#6B7280' }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                tickFormatter={(val: any) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               />
               <YAxis 
                 tick={{ fontSize: 12, fill: '#6B7280' }} 
@@ -138,7 +138,7 @@ export const AnalyticsDashboard: React.FC = () => {
                 axisLine={false}
               />
               <Tooltip 
-                labelFormatter={(val) => new Date(val).toLocaleString()}
+                labelFormatter={(val: any) => new Date(val).toLocaleString()}
                 contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
               />
               <Legend wrapperStyle={{ paddingTop: '20px' }} />

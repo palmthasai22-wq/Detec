@@ -77,7 +77,7 @@ export const PublicViewer: React.FC = () => {
     <div className="w-screen h-screen bg-black overflow-hidden relative font-sans">
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="w-full h-full">
-          <HlsPlayer url={streamInfo.hls_url} autoPlay muted />
+          <HlsPlayer url={streamInfo.hls_url} />
         </div>
       </div>
       
