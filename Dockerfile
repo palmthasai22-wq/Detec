@@ -29,8 +29,8 @@ COPY --chown=user:user backend/ .
 RUN mkdir -p uploads && chmod 777 uploads
 RUN touch detec.db && chmod 777 detec.db
 
-# Expose the port Hugging Face Spaces expects
-EXPOSE 7860
+# Expose port (default 8000, but can be overridden by PORT)
+EXPOSE 8000
 
-# Run the FastAPI application on port 7860
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Use shell form for CMD so environment variables like $PORT are expanded
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
