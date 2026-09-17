@@ -1,112 +1,90 @@
 import cv2
 import numpy as np
 import asyncio
-import requests
-import base64
-import math
-import os
+import time
 from datetime import datetime, timezone
 from collections import deque
 from ultralytics import YOLO
 import supervision as sv
 
-try:
-    model = YOLO('yolo26m.pt')
-    MODEL_NAME = "YOLO26m"
-except Exception:
-    model = YOLO('yolo11m.pt')
-    MODEL_NAME = "YOLO11m"
+from . import models
+from .density_analyzer import DensityAnalyzer
+from .traffic_analyzer import TrafficAnalyzer
+from .source_validator import SourceValidator
+from .youtube_extractor import YouTubeExtractor
 
-print(f"[AI Engine] Loaded standard model: {MODEL_NAME}")
-
-TARGET_CLASSES = [1, 2, 3, 5, 7]
+# Fallback classes map for labeling
+CLASS_NAMES_DICT = {
+    0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'
+}
 
 class VideoProcessor:
-    def __init__(self, camera_id: int, source_url: str, cam_type: str, config: dict):
-        self.camera_id = camera_id
-        self.source_url = source_url
-        self.cam_type = cam_type
-        self.config = config
+    def __init__(self, channel: models.Channel, zones: list[models.Zone]):
+        self.channel_id = channel.id
+        self.source_url = channel.source_url
+        self.source_type = channel.source_type
+        self.ai_model_name = channel.ai_model or "yolo11m"
+        self.conf_thresh = channel.confidence_threshold or 0.25
+        self.target_classes = channel.object_classes or [0, 1, 2, 3, 5, 7]
+        
         self.running = False
         self.latest_frame = None
         self.frame_version = 0
         self.frame_condition = asyncio.Condition()
         self.viewer_lock = asyncio.Lock()
         self.viewer_count = 0
-        self.max_viewers = max(1, int(os.getenv("DETEC_MAX_VIEWERS_PER_CAMERA", "30")))
+        self.max_viewers = 30
         
         self.tracker = sv.ByteTrack()
-        self.track_history = {} 
+        self.zones_config = zones
         
-        self.engine = config.get("engine", "yolo") if config else "yolo"
-        self.latest_stats = None
-        self.rf_model_id = config.get("roboflow_model_id") if config else None
-        self.rf_api_key = config.get("roboflow_api_key") if config else None
+        self.sv_zones = {}
+        self.density_analyzers = {}
+        self.traffic_analyzers = {}
+        self.track_history = {}
         
-        if self.engine == "roboflow":
-            print(f"[AI Engine] Using Roboflow Cloud API for Model: {self.rf_model_id}")
-        
-        self.line_zone = None
-        self.line_zone_annotator = None
-        
-        if self.config and self.config.get("counting_line"):
-            line_coords = self.config["counting_line"]
-            if len(line_coords) == 2:
-                start = sv.Point(x=line_coords[0][0], y=line_coords[0][1])
-                end = sv.Point(x=line_coords[1][0], y=line_coords[1][1])
-                if start.x == end.x and start.y == end.y:
-                    end = sv.Point(x=end.x + 10, y=end.y + 10)
-                self.line_zone = sv.LineZone(start=start, end=end)
-                self.line_zone_annotator = sv.LineZoneAnnotator()
+        try:
+            self.model = YOLO(f"{self.ai_model_name}.pt")
+        except Exception:
+            print(f"Fallback to yolo11m.pt for channel {self.channel_id}")
+            self.model = YOLO("yolo11m.pt")
+            
+        self.frame_resolution = None
 
-        if self.config and self.config.get("wait_zone"):
-            self.wait_zone_polygon = np.array(self.config["wait_zone"], dtype=np.float32)
-        else:
-            self.wait_zone_polygon = None
+    def _init_zones(self, resolution):
+        """Initialize Supervision polygons and analyzers once resolution is known"""
+        if self.frame_resolution == resolution:
+            return
+            
+        self.frame_resolution = resolution
+        w, h = resolution
+        
+        self.sv_zones = {}
+        self.density_analyzers = {}
+        self.traffic_analyzers = {}
+        
+        for z in self.zones_config:
+            if z.polygon:
+                # Convert normalized coords [0-1] to absolute pixels
+                pts = np.array(z.polygon, dtype=np.float32)
+                scaled_pts = (pts * [w, h]).astype(np.int32)
+                self.sv_zones[z.id] = sv.PolygonZone(polygon=scaled_pts, frame_resolution_wh=(w, h))
+                
+                # Zone capacity could be a config, defaulting to 50 for now
+                self.density_analyzers[z.id] = DensityAnalyzer(zone_polygon=scaled_pts, zone_capacity=50)
+                self.traffic_analyzers[z.id] = TrafficAnalyzer()
 
     def process_frame_raw(self, frame):
-        conf_thresh = self.config.get("confidence_threshold", 0.15) if self.config else 0.15
-        infer_size = 1536 if self.cam_type == "file" else 1280
+        h, w = frame.shape[:2]
+        self._init_zones((w, h))
         
-        if self.engine == "roboflow" and self.rf_model_id and self.rf_api_key:
-            retval, buffer = cv2.imencode('.jpg', frame)
-            img_str = base64.b64encode(buffer).decode("ascii")
-            url = f"https://detect.roboflow.com/{self.rf_model_id}?api_key={self.rf_api_key}&confidence={int(conf_thresh*100)}"
-            try:
-                resp = requests.post(url, data=img_str, headers={"Content-Type": "application/x-www-form-urlencoded"})
-                data = resp.json()
-                xyxy, confidences, class_ids, roboflow_classes = [], [], [], []
-                if "predictions" in data:
-                    for p in data["predictions"]:
-                        x, y, w, h = p["x"], p["y"], p["width"], p["height"]
-                        xyxy.append([x - w/2, y - h/2, x + w/2, y + h/2])
-                        confidences.append(p["confidence"])
-                        class_ids.append(p.get("class_id", 0))
-                        roboflow_classes.append(p["class"])
-                
-                if len(xyxy) > 0:
-                    raw_detections = sv.Detections(
-                        xyxy=np.array(xyxy), confidence=np.array(confidences), class_id=np.array(class_ids)
-                    )
-                    raw_detections.data = {"class_name": roboflow_classes}
-                else:
-                    raw_detections = sv.Detections.empty()
-            except Exception as e:
-                print(f"Roboflow API error: {e}")
-                raw_detections = sv.Detections.empty()
-        else:
-            results = model(frame, verbose=False, classes=TARGET_CLASSES, 
-                           conf=conf_thresh, imgsz=infer_size, iou=0.45, max_det=1000)[0]
-            raw_detections = sv.Detections.from_ultralytics(results)
-            
+        results = self.model(frame, verbose=False, classes=self.target_classes, 
+                           conf=self.conf_thresh, iou=0.45)[0]
+                           
+        raw_detections = sv.Detections.from_ultralytics(results)
         tracked_detections = self.tracker.update_with_detections(raw_detections)
         
         current_ids = []
-        total_displacement = 0
-        valid_speed_samples = 0
-        stopped_inside = 0
-        stopped_outside = 0
-        
         for i in range(len(tracked_detections)):
             tracker_id = tracked_detections.tracker_id[i]
             bbox = tracked_detections.xyxy[i]
@@ -115,89 +93,83 @@ class VideoProcessor:
             current_ids.append(tracker_id)
             if tracker_id not in self.track_history:
                 self.track_history[tracker_id] = deque(maxlen=20)
-                
-            history = self.track_history[tracker_id]
-            history.append((cx, cy))
+            self.track_history[tracker_id].append((cx, cy))
             
-            if len(history) >= 5:
-                start_cx, start_cy = history[0]
-                displacement = math.hypot(cx - start_cx, cy - start_cy)
-                total_displacement += displacement
-                valid_speed_samples += 1
-                
-                if displacement < 15: # Slow or stopped
-                    if self.wait_zone_polygon is not None:
-                        # scale normalized coords to ai_frame
-                        h, w = frame.shape[:2]
-                        scaled_poly = (self.wait_zone_polygon * [w, h]).astype(np.int32)
-                        if cv2.pointPolygonTest(scaled_poly, (cx, cy), False) >= 0:
-                            stopped_inside += 1
-                        else:
-                            stopped_outside += 1
-                    else:
-                        stopped_outside += 1
-
+        # Clean up lost tracks
         self.track_history = {k: v for k, v in self.track_history.items() if k in current_ids}
-        avg_speed = total_displacement / valid_speed_samples if valid_speed_samples > 0 else 0
-        total_vehicles = len(raw_detections)
         
-        # Macro State Evaluation with Smart ROI (Wait Zone)
-        if total_vehicles == 0:
-            macro_state = "CLEAR"
-            congestion_index = 0
-        elif avg_speed > 25:
-            macro_state = "FLOWING"
-            congestion_index = min(30, total_vehicles * 2)
-        elif avg_speed > 8:
-            macro_state = "SLOWING"
-            congestion_index = min(70, 40 + total_vehicles * 2)
-        else:
-            if self.wait_zone_polygon is not None and stopped_inside >= stopped_outside and stopped_inside > 0:
-                macro_state = "WAITING"
-                congestion_index = 40 # Keeps the status out of the RED zone
-            else:
-                if total_vehicles > 3:
-                    macro_state = "JAMMED"
-                    congestion_index = min(100, 75 + total_vehicles * 3)
-                else:
-                    macro_state = "NORMAL"
-                    congestion_index = 10
-
-        if macro_state == "WAITING":
-            density_level = "blue"
-        elif macro_state in ["CLEAR", "FLOWING", "NORMAL"]:
-            density_level = "green"
-        elif macro_state == "SLOWING":
-            density_level = "yellow"
-        else:
-            density_level = "red"
+        # Analyze each zone
+        zone_stats_list = []
         
-        in_count, out_count = 0, 0
-        if self.line_zone:
-            self.line_zone.trigger(detections=tracked_detections)
-            in_count = self.line_zone.in_count
-            out_count = self.line_zone.out_count
+        for z in self.zones_config:
+            if z.id not in self.sv_zones:
+                continue
+                
+            zone_obj = self.sv_zones[z.id]
+            mask = zone_obj.trigger(detections=tracked_detections)
+            zone_detections = tracked_detections[mask]
             
+            # Count objects by class
+            counts = {}
+            for class_id in zone_detections.class_id:
+                c_name = CLASS_NAMES_DICT.get(int(class_id), f"class_{class_id}")
+                counts[c_name] = counts.get(c_name, 0) + 1
+                
+            density_data = {"density_index": 0}
+            if z.density_enabled:
+                density_data = self.density_analyzers[z.id].calculate_density(zone_detections)
+                
+            traffic_data = {"traffic_index": 0, "traffic_level": "NORMAL"}
+            if z.traffic_enabled:
+                traffic_data = self.traffic_analyzers[z.id].calculate_traffic(
+                    zone_detections, self.track_history, density_data["density_index"]
+                )
+                
+            zone_stats_list.append({
+                "zone_id": z.id,
+                "name": z.name,
+                "object_counts": counts,
+                "total_objects": len(zone_detections),
+                "density_index": density_data["density_index"],
+                "traffic_index": traffic_data["traffic_index"],
+                "traffic_level": traffic_data["traffic_level"]
+            })
+            
+        # Channel level aggregates
+        total_counts = {}
+        for class_id in tracked_detections.class_id:
+            c_name = CLASS_NAMES_DICT.get(int(class_id), f"class_{class_id}")
+            total_counts[c_name] = total_counts.get(c_name, 0) + 1
+            
+        avg_density = 0
+        avg_traffic = 0
+        if zone_stats_list:
+            avg_density = sum(s["density_index"] for s in zone_stats_list) // len(zone_stats_list)
+            avg_traffic = sum(s["traffic_index"] for s in zone_stats_list) // len(zone_stats_list)
+            
+        channel_stats = {
+            "object_counts": total_counts,
+            "total_objects": len(tracked_detections),
+            "density_index": avg_density,
+            "traffic_index": avg_traffic,
+            "traffic_level": "NORMAL" if avg_traffic < 25 else "HIGH" # Simplified aggregate
+        }
+        
+        # Prepare broadcast payload
         stats = {
-            "camera_id": self.camera_id,
-            "density": density_level,
-            "congestion_index": congestion_index,
-            "average_speed": round(float(avg_speed), 2),
-            "speed_unit": "px/window",
-            "traffic_state": macro_state,
-            "current_vehicles": total_vehicles,
-            "person_count": 0,
-            "car_count": total_vehicles,
-            "motorcycle_count": 0,
-            "truck_count": 0,
-            "in_count": in_count,
-            "out_count": out_count,
+            "camera_id": self.channel_id,
+            "channel_stats": channel_stats,
+            "zone_stats": zone_stats_list,
+            # Backward compat fields for existing frontend (until Phase 4)
+            "density": "green" if avg_density < 50 else "red",
+            "congestion_index": avg_density,
+            "traffic_state": channel_stats["traffic_level"],
+            "current_vehicles": channel_stats["total_objects"],
+            "car_count": total_counts.get("car", 0),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
-        print(f"[AI Macro] State: {macro_state} | Speed: {avg_speed:.1f} | Jam Index: {congestion_index}%")
-        boxes = tracked_detections.xyxy.tolist() if len(tracked_detections) else []
-        return macro_state, avg_speed, self.track_history.copy(), boxes, stats
+        return tracked_detections, stats
 
     async def reserve_viewer(self):
         async with self.viewer_lock:
@@ -211,7 +183,6 @@ class VideoProcessor:
             self.viewer_count = max(0, self.viewer_count - 1)
 
     async def mjpeg_frames(self):
-        """Fan out the already encoded latest frame without rerunning AI per viewer."""
         last_version = -1
         try:
             while True:
@@ -234,52 +205,42 @@ class VideoProcessor:
         finally:
             await self.release_viewer()
 
+    def get_actual_url(self):
+        if self.source_type in ["youtube", "youtube_live"]:
+            yt_info = YouTubeExtractor.get_stream_url(self.source_url)
+            if yt_info.get("url"):
+                return yt_info["url"]
+        return self.source_url
+
     async def run(self, broadcast_queue: asyncio.Queue):
-        cap = cv2.VideoCapture(self.source_url)
+        actual_url = self.get_actual_url()
+        cap = cv2.VideoCapture(actual_url)
         self.running = True
         
-        last_macro_state = "CLEAR"
-        last_avg_speed = 0.0
-        last_track_trails = {}
-        last_boxes = []
-        last_stats = {"congestion_index": 0, "current_vehicles": 0}
-        
         processing_task = None
+        last_stats = None
+        last_detections = None
         
         while self.running and cap.isOpened():
-            # Run cap.read() in a thread so it doesn't block the async event loop (Fixes stuttering)
             success, raw_frame = await asyncio.to_thread(cap.read)
             if not success:
-                if self.cam_type == "file":
+                if self.source_type == "mp4":
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
                 break
                 
             h, w = raw_frame.shape[:2]
+            ai_scale = min(1.0, 1024 / max(h, w))
+            ai_frame = cv2.resize(raw_frame, (int(w * ai_scale), int(h * ai_scale))) if ai_scale < 1.0 else raw_frame.copy()
             
-            ai_max = 1280 if self.cam_type == "file" else 1024 # Reduced AI size slightly for speed
-            ai_scale = 1.0
-            if max(h, w) > ai_max:
-                ai_scale = ai_max / max(h, w)
-                ai_frame = cv2.resize(raw_frame, (int(w * ai_scale), int(h * ai_scale)))
-            else:
-                ai_frame = raw_frame.copy()
-
-            # Reduce display resolution to 800px (fast JPEG encoding & drawing, reduces UI lag)
-            display_max = 800 
-            display_scale = 1.0
-            if max(h, w) > display_max:
-                display_scale = display_max / max(h, w)
-                display_frame = cv2.resize(raw_frame, (int(w * display_scale), int(h * display_scale)))
-            else:
-                display_frame = raw_frame.copy()
+            display_scale = min(1.0, 800 / max(h, w))
+            annotated_frame = cv2.resize(raw_frame, (int(w * display_scale), int(h * display_scale))) if display_scale < 1.0 else raw_frame.copy()
             
             if processing_task is None or processing_task.done():
                 if processing_task and processing_task.done():
                     try:
-                        last_macro_state, last_avg_speed, last_track_trails, last_boxes, stats = processing_task.result()
+                        last_detections, stats = processing_task.result()
                         last_stats = stats
-                        self.latest_stats = stats
                         try:
                             broadcast_queue.put_nowait(stats)
                         except asyncio.QueueFull:
@@ -289,77 +250,41 @@ class VideoProcessor:
                 
                 processing_task = asyncio.create_task(asyncio.to_thread(self.process_frame_raw, ai_frame.copy()))
             
-            annotated_frame = display_frame.copy()
+            # Draw overlay
+            overlay = annotated_frame.copy()
             scale_ratio = display_scale / ai_scale
             
-            overlay = annotated_frame.copy()
-            
-            if last_macro_state == "JAMMED":
-                color_bgr = (0, 0, 255) # Red
-            elif last_macro_state == "WAITING":
-                color_bgr = (255, 150, 0) # Cyan/Blue for Waiting Light
-            elif last_macro_state == "SLOWING":
-                color_bgr = (0, 255, 255) # Yellow
-            else:
-                color_bgr = (0, 255, 0) # Green
-
-            cv2.rectangle(overlay, (0, 0), (w, 125), color_bgr, -1)
-            cv2.rectangle(overlay, (0, 0), (w, h), color_bgr, 15)
-            
-            # Draw Wait Zone
-            if self.wait_zone_polygon is not None:
-                scaled_pts = (self.wait_zone_polygon * [w, h]).astype(np.int32)
-                cv2.fillPoly(overlay, [scaled_pts], (255, 100, 0)) # Translucent blue zone
-                cv2.polylines(annotated_frame, [scaled_pts], True, (255, 200, 0), 2)
-            
-            cv2.addWeighted(overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
-            
-            for track_id, history in last_track_trails.items():
-                if len(history) > 1:
-                    pts = np.array([(int(x * scale_ratio), int(y * scale_ratio)) for x, y in history], np.int32)
-                    pts = pts.reshape((-1, 1, 2))
-                    cv2.polylines(annotated_frame, [pts], False, color_bgr, 3)
-                    
-                    cx, cy = int(history[-1][0] * scale_ratio), int(history[-1][1] * scale_ratio)
-                    cv2.circle(annotated_frame, (cx, cy), 6, (255, 255, 255), -1)
-                    cv2.circle(annotated_frame, (cx, cy), 8, color_bgr, 2)
-
-            for x1, y1, x2, y2 in last_boxes:
-                cv2.rectangle(
-                    annotated_frame,
-                    (int(x1 * scale_ratio), int(y1 * scale_ratio)),
-                    (int(x2 * scale_ratio), int(y2 * scale_ratio)),
-                    color_bgr,
-                    2,
-                )
-            
-            cv2.putText(annotated_frame, f"TRAFFIC FLOW: {last_macro_state}", (30, 38), cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 3)
-            cv2.putText(annotated_frame, f"JAM INDEX: {last_stats['congestion_index']}% | VEHICLES: {last_stats['current_vehicles']}", (30, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-            cv2.putText(annotated_frame, f"AVG SPEED: {last_avg_speed:.1f} px/window", (30, 106), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
-            
-            if self.config and self.config.get("counting_line"):
-                line_coords = self.config["counting_line"]
-                if len(line_coords) == 2:
-                    lx1 = int(line_coords[0][0] * scale_ratio)
-                    ly1 = int(line_coords[0][1] * scale_ratio)
-                    lx2 = int(line_coords[1][0] * scale_ratio)
-                    ly2 = int(line_coords[1][1] * scale_ratio)
-                    cv2.line(annotated_frame, (lx1, ly1), (lx2, ly2), (255, 0, 255), 4)
-            
-            # Optimize JPEG encoding (Quality 60 is plenty for dashboard, drastically reduces bandwidth & lag)
+            if last_stats:
+                # Draw Zones
+                for z in self.zones_config:
+                    if z.polygon:
+                        pts = np.array(z.polygon, dtype=np.float32)
+                        scaled_pts = (pts * [int(w * display_scale), int(h * display_scale)]).astype(np.int32)
+                        cv2.fillPoly(overlay, [scaled_pts], (255, 100, 0))
+                        cv2.polylines(annotated_frame, [scaled_pts], True, (255, 200, 0), 2)
+                        
+                cv2.addWeighted(overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
+                
+                # Draw BBoxes
+                if last_detections:
+                    for i in range(len(last_detections)):
+                        bbox = last_detections.xyxy[i]
+                        x1, y1, x2, y2 = (bbox * scale_ratio).astype(int)
+                        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                
+                # Draw Stats Text
+                cv2.rectangle(annotated_frame, (0, 0), (int(w * display_scale), 100), (0, 0, 0), -1)
+                cv2.putText(annotated_frame, f"DENSITY: {last_stats['channel_stats']['density_index']}/100", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"TRAFFIC: {last_stats['channel_stats']['traffic_level']}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                
             ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
-            if not ret:
-                continue
-            frame_bytes = buffer.tobytes()
-            async with self.frame_condition:
-                self.latest_frame = frame_bytes
-                self.frame_version += 1
-                self.frame_condition.notify_all()
+            if ret:
+                async with self.frame_condition:
+                    self.latest_frame = buffer.tobytes()
+                    self.frame_version += 1
+                    self.frame_condition.notify_all()
             
-            if self.cam_type == "file":
-                await asyncio.sleep(0.04) # Cap at 25fps for smoother web streaming
-            else:
-                await asyncio.sleep(0.005) # Yield event loop slightly more often
+            await asyncio.sleep(0.01)
                 
         cap.release()
         self.running = False

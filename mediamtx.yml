@@ -1,0 +1,37 @@
+paths:
+  # Enable dynamic paths. Any path published will be automatically created.
+  all:
+    runOnInit: ""
+    runOnInitRestart: false
+    runOnDemand: ""
+    runOnDemandRestart: false
+    runOnReady: ""
+    runOnReadyRestart: false
+    runOnRead: ""
+    runOnReadRestart: false
+
+# RTSP Server settings
+rtsp: true
+protocols: [tcp]
+rtspAddress: :8554
+
+# RTMP Server settings
+rtmp: true
+rtmpAddress: :1935
+
+# WebRTC (WHEP) settings for low latency viewing
+webrtc: true
+webrtcAddress: :8889
+
+# HLS settings for scalable CDN viewing
+hls: true
+hlsAddress: :8888
+hlsAlwaysRemux: true
+hlsVariant: lowLatency
+hlsSegmentCount: 5
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+# API for stats tracking
+api: true
+apiAddress: :9997

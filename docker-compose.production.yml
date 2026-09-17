@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: detec-mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"   # RTSP
+      - "1935:1935"   # RTMP
+      - "8888:8888"   # HLS / LL-HLS
+      - "8889:8889"   # WebRTC
+      - "9997:9997"   # API
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: detec-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: detec
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: detec-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://admin:admin_password@postgres:5432/detec
+      - MEDIAMTX_URL=rtsp://mediamtx:8554
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - postgres
+      - mediamtx
+
+volumes:
+  pg_data:

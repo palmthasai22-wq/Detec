@@ -1,98 +1,160 @@
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from urllib.parse import urlparse
-from .models import CameraType
+from .models import SourceType, ChannelStatus
 
-class CameraBase(BaseModel):
-    name: str
-    type: CameraType
-    url: Optional[str] = None
+class ChannelBase(BaseModel):
+    source_url: Optional[str] = None
+    source_username: Optional[str] = None
+    source_password: Optional[str] = None
+    source_port: Optional[int] = None
+    source_resolution: Optional[str] = None
+    source_fps: Optional[int] = None
+    source_codec: Optional[str] = None
+    source_transport: Optional[str] = None
+    loop_playback: Optional[bool] = True
+    ai_model: Optional[str] = "yolo11m"
+    confidence_threshold: Optional[float] = 0.25
+    object_classes: Optional[List[int]] = None
+    status: Optional[ChannelStatus] = ChannelStatus.offline
+    is_shared: Optional[bool] = False
+    share_token: Optional[str] = None
+    share_expires_at: Optional[datetime] = None
+    public_url_slug: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     embed_url: Optional[str] = None
     embed_mode: Optional[str] = None
-    density_green_threshold: Optional[int] = 10
-    density_yellow_threshold: Optional[int] = 20
-    confidence_threshold: Optional[float] = 0.15
-    counting_line: Optional[List[List[int]]] = None
-    wait_zone: Optional[List[List[float]]] = None
     engine: Optional[str] = "yolo"
     roboflow_model_id: Optional[str] = None
     roboflow_api_key: Optional[str] = None
-    lat: Optional[float] = Field(default=None, ge=-90, le=90)
-    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    counting_line: Optional[Any] = None
+    wait_zone: Optional[Any] = None
+    density_green_threshold: Optional[int] = 10
+    density_yellow_threshold: Optional[int] = 20
 
-    @field_validator("embed_url")
-    @classmethod
-    def validate_embed_url(cls, value):
-        if value in (None, ""):
-            return None
-        parsed = urlparse(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("embed_url must be an http(s) URL")
-        return value
+class ChannelCreate(ChannelBase):
+    name: str
+    source_type: SourceType
+    source_url: Optional[str] = None # Optional for mp4 types based on request logic
 
-    @field_validator("embed_mode")
-    @classmethod
-    def validate_embed_mode(cls, value):
-        if value in (None, ""):
-            return None
-        if value not in {"image", "iframe"}:
-            raise ValueError("embed_mode must be image or iframe")
-        return value
-
-    @model_validator(mode="after")
-    def coordinates_must_be_a_pair(self):
-        if (self.lat is None) != (self.lng is None):
-            raise ValueError("lat and lng must be provided together")
-        if not self.url and not self.embed_url:
-            raise ValueError("url or embed_url is required")
-        if self.type == CameraType.embed and not self.embed_url:
-            raise ValueError("embed_url is required for embed cameras")
-        return self
-
-class CameraCreate(CameraBase):
-    pass
-
-class CameraUpdate(BaseModel):
+class ChannelUpdate(BaseModel):
     name: Optional[str] = None
-    type: Optional[CameraType] = None
-    url: Optional[str] = None
+    source_type: Optional[SourceType] = None
+    source_url: Optional[str] = None
+    source_username: Optional[str] = None
+    source_password: Optional[str] = None
+    source_port: Optional[int] = None
+    source_resolution: Optional[str] = None
+    source_fps: Optional[int] = None
+    source_codec: Optional[str] = None
+    source_transport: Optional[str] = None
+    loop_playback: Optional[bool] = None
+    ai_model: Optional[str] = None
+    confidence_threshold: Optional[float] = None
+    object_classes: Optional[List[int]] = None
+    status: Optional[ChannelStatus] = None
+    is_shared: Optional[bool] = None
+    share_token: Optional[str] = None
+    share_expires_at: Optional[datetime] = None
+    public_url_slug: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     embed_url: Optional[str] = None
     embed_mode: Optional[str] = None
-    density_green_threshold: Optional[int] = None
-    density_yellow_threshold: Optional[int] = None
-    confidence_threshold: Optional[float] = None
-    counting_line: Optional[List[List[int]]] = None
-    wait_zone: Optional[List[List[float]]] = None
     engine: Optional[str] = None
     roboflow_model_id: Optional[str] = None
     roboflow_api_key: Optional[str] = None
-    lat: Optional[float] = Field(default=None, ge=-90, le=90)
-    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    counting_line: Optional[Any] = None
+    wait_zone: Optional[Any] = None
+    density_green_threshold: Optional[int] = None
+    density_yellow_threshold: Optional[int] = None
 
-    _validate_embed_url = field_validator("embed_url")(CameraBase.validate_embed_url.__func__)
-    _validate_embed_mode = field_validator("embed_mode")(CameraBase.validate_embed_mode.__func__)
-
-    @model_validator(mode="after")
-    def coordinates_must_be_a_pair(self):
-        if (self.lat is None) != (self.lng is None):
-            raise ValueError("lat and lng must be provided together")
-        return self
-
-class Camera(CameraBase):
+class Channel(ChannelBase):
     id: int
     public_id: str
+    name: str
+    source_type: SourceType
+    created_at: datetime
+    updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ZoneBase(BaseModel):
+    name: str
+    color: Optional[str] = "#3b82f6"
+    polygon: Any
+    object_classes: Optional[List[int]] = None
+    density_enabled: Optional[bool] = True
+    traffic_enabled: Optional[bool] = True
+    counting_enabled: Optional[bool] = True
+    alert_enabled: Optional[bool] = False
+    counting_line: Optional[Any] = None
+
+class ZoneCreate(ZoneBase):
+    name: str
+    polygon: Any
+
+class ZoneUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    polygon: Optional[Any] = None
+    object_classes: Optional[List[int]] = None
+    density_enabled: Optional[bool] = None
+    traffic_enabled: Optional[bool] = None
+    counting_enabled: Optional[bool] = None
+    alert_enabled: Optional[bool] = None
+    counting_line: Optional[Any] = None
+
+class Zone(ZoneBase):
+    id: int
+    channel_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ZoneAnalyticsBase(BaseModel):
+    channel_id: int
+    zone_id: Optional[int] = None
+    object_counts: Dict[str, int]
+    total_objects: Optional[int] = 0
+    density_index: Optional[int] = 0
+    traffic_index: Optional[int] = 0
+    traffic_level: Optional[str] = "normal"
+    average_speed: Optional[float] = 0.0
+    queue_length: Optional[int] = 0
+    stopped_count: Optional[int] = 0
+    in_count: Optional[int] = 0
+    out_count: Optional[int] = 0
+
+class ZoneAnalyticsOut(ZoneAnalyticsBase):
+    id: int
+    timestamp: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AnalyticsQuery(BaseModel):
+    channel_id: Optional[int] = None
+    zone_id: Optional[int] = None
+    time_range: str
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+class SystemLogOut(BaseModel):
+    id: int
+    timestamp: datetime
+    channel_id: Optional[int] = None
+    event_type: str
+    message: str
+    metadata: Optional[Any] = Field(default=None, alias="metadata_")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 class TrafficLogBase(BaseModel):
     camera_id: int
-    person_count: int
-    car_count: int
-    motorcycle_count: int
-    truck_count: int
-    density_level: str
+    object_type: str
+    count: int
+    direction: Optional[str] = None
 
 class TrafficLogCreate(TrafficLogBase):
     pass
@@ -101,5 +163,10 @@ class TrafficLog(TrafficLogBase):
     id: int
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+# Aliases for backward compatibility
+CameraBase = ChannelBase
+CameraCreate = ChannelCreate
+CameraUpdate = ChannelUpdate
+Camera = Channel
