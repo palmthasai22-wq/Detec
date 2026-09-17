@@ -4,6 +4,7 @@ import asyncio
 import requests
 import base64
 import math
+from datetime import datetime, timezone
 from collections import deque
 from ultralytics import YOLO
 import supervision as sv
@@ -155,7 +156,14 @@ class VideoProcessor:
                     macro_state = "NORMAL"
                     congestion_index = 10
 
-        density_level = "green" if macro_state in ["CLEAR", "FLOWING", "NORMAL", "WAITING"] else ("yellow" if macro_state == "SLOWING" else "red")
+        if macro_state == "WAITING":
+            density_level = "blue"
+        elif macro_state in ["CLEAR", "FLOWING", "NORMAL"]:
+            density_level = "green"
+        elif macro_state == "SLOWING":
+            density_level = "yellow"
+        else:
+            density_level = "red"
         
         in_count, out_count = 0, 0
         if self.line_zone:
@@ -167,13 +175,17 @@ class VideoProcessor:
             "camera_id": self.camera_id,
             "density": density_level,
             "congestion_index": congestion_index,
+            "average_speed": round(float(avg_speed), 2),
+            "speed_unit": "px/window",
+            "traffic_state": macro_state,
             "current_vehicles": total_vehicles,
             "person_count": 0,
             "car_count": total_vehicles,
             "motorcycle_count": 0,
             "truck_count": 0,
             "in_count": in_count,
-            "out_count": out_count
+            "out_count": out_count,
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
         print(f"[AI Macro] State: {macro_state} | Speed: {avg_speed:.1f} | Jam Index: {congestion_index}%")

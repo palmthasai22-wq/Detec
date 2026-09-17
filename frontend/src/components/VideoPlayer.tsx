@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { Settings, Users, Car, AlertTriangle, Truck } from 'lucide-react';
+import { getApiUrl, getWebSocketUrl } from '../config/api';
 
 interface VideoPlayerProps {
   cameraId: number;
+  embedUrl?: string;
+  embedMode?: 'image' | 'iframe';
 }
 
 interface StreamStats {
   camera_id: number;
-  density: 'green' | 'yellow' | 'red';
+  density: 'green' | 'yellow' | 'red' | 'blue';
   congestion_index: number;
   current_vehicles: number;
   person_count: number;
@@ -19,7 +22,7 @@ interface StreamStats {
   out_count: number;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode }) => {
   const [stats, setStats] = useState<StreamStats | null>(null);
   const [confidence, setConfidence] = useState<number>(15);
   const [showSettings, setShowSettings] = useState(false);
@@ -28,16 +31,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
   useEffect(() => {
     // Fetch initial confidence
     axios.get(`/api/cameras/`).then(res => {
-      const cam = res.data.find((c: any) => c.id === cameraId);
+      const cameras = Array.isArray(res.data) ? res.data : [];
+      const cam = cameras.find((c: any) => c.id === cameraId);
       if (cam && cam.confidence_threshold) {
         setConfidence(Math.round(cam.confidence_threshold * 100));
       }
     }).catch(console.error);
 
     // WebSocket for stats
-    const apiUrl = import.meta.env.VITE_API_URL || '';
-    const wsBaseUrl = apiUrl ? apiUrl.replace(/^http/, 'ws') : `ws://${window.location.host}`;
-    const ws = new WebSocket(`${wsBaseUrl}/api/analytics/ws`);
+    const ws = new WebSocket(getWebSocketUrl('/api/analytics/ws'));
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -68,6 +70,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
     green: { color: 'text-green-400', bg: 'bg-green-500', glow: 'shadow-[0_0_15px_#22c55e]', label: 'FLOWING' },
     yellow: { color: 'text-yellow-400', bg: 'bg-yellow-500', glow: 'shadow-[0_0_15px_#eab308]', label: 'SLOWING' },
     red: { color: 'text-red-400', bg: 'bg-red-500', glow: 'shadow-[0_0_15px_#ef4444]', label: 'JAMMED' },
+    blue: { color: 'text-blue-400', bg: 'bg-blue-500', glow: 'shadow-[0_0_15px_#3b82f6]', label: 'WAITING SIGNAL' },
   };
 
   const currentDensity = stats ? densityConfig[stats.density] : densityConfig.green;
@@ -75,14 +78,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black group overflow-hidden">
       {/* Video Feed */}
-      <img 
-        src={`/api/streams/${cameraId}`} 
-        alt={`Stream ${cameraId}`}
-        className="w-full h-full object-contain"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect width="100%" height="100%" fill="%23050810"/><text x="50%" y="50%" fill="%23334155" font-family="monospace" font-size="20" text-anchor="middle" alignment-baseline="middle">ไม่มีสัญญาณ</text></svg>';
-        }}
-      />
+      {embedUrl && embedMode === 'iframe' ? (
+        <iframe
+          src={embedUrl}
+          title={`Embedded camera ${cameraId}`}
+          className="h-full w-full border-0 bg-black"
+          allow="autoplay; fullscreen; picture-in-picture"
+          sandbox="allow-scripts allow-same-origin allow-presentation"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <img
+          src={embedUrl || getApiUrl(`/api/streams/${cameraId}`)}
+          alt={`Stream ${cameraId}`}
+          className="w-full h-full object-contain"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect width="100%" height="100%" fill="%23050810"/><text x="50%" y="50%" fill="%23334155" font-family="monospace" font-size="20" text-anchor="middle" alignment-baseline="middle">ไม่มีสัญญาณ</text></svg>';
+          }}
+        />
+      )}
       
       {/* Settings Gear - Top Right */}
       <div className="absolute top-4 right-4 z-30 opacity-0 group-hover:opacity-100 transition-opacity">

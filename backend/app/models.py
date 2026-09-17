@@ -7,6 +7,7 @@ class CameraType(str, enum.Enum):
     rtsp = "rtsp"
     rtmp = "rtmp"
     file = "file"
+    embed = "embed"
 
 class Camera(Base):
     __tablename__ = "cameras"
@@ -14,7 +15,9 @@ class Camera(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     type = Column(Enum(CameraType), default=CameraType.rtsp)
-    url = Column(String)  # URL or File Path
+    url = Column(String, nullable=True)  # AI stream URL or file path
+    embed_url = Column(String, nullable=True)  # Safe src extracted from an image URL or iframe
+    embed_mode = Column(String, nullable=True)  # "image" or "iframe"
     density_green_threshold = Column(Integer, default=10) # 0-10 vehicles -> green
     density_yellow_threshold = Column(Integer, default=20) # 11-20 -> yellow, >20 -> red
     confidence_threshold = Column(Float, default=0.10)
@@ -36,4 +39,4 @@ class TrafficLog(Base):
     car_count = Column(Integer, default=0)
     motorcycle_count = Column(Integer, default=0)
     truck_count = Column(Integer, default=0)
-    density_level = Column(String) # 'green', 'yellow', 'red'
+    density_level = Column(String) # 'green', 'yellow', 'red', 'blue'

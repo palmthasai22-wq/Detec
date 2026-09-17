@@ -7,6 +7,9 @@ interface Camera {
   id: number;
   name: string;
   type: string;
+  url?: string | null;
+  embed_url?: string | null;
+  embed_mode?: 'image' | 'iframe' | null;
 }
 
 const Dashboard = () => {
@@ -16,7 +19,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     axios.get('/api/cameras')
-      .then(res => setCameras(res.data))
+      .then(res => setCameras(Array.isArray(res.data) ? res.data : []))
       .catch(err => console.error("Error fetching cameras:", err));
   }, []);
 
@@ -85,7 +88,11 @@ const Dashboard = () => {
             {/* Video Content */}
             <div className="flex-1 w-full h-full bg-[#050810] relative flex items-center justify-center">
               {selectedCameras[index] ? (
-                <VideoPlayer cameraId={selectedCameras[index]!} />
+                <VideoPlayer
+                  cameraId={selectedCameras[index]!}
+                  embedUrl={cameras.find(camera => camera.id === selectedCameras[index])?.url ? undefined : cameras.find(camera => camera.id === selectedCameras[index])?.embed_url || undefined}
+                  embedMode={cameras.find(camera => camera.id === selectedCameras[index])?.embed_mode || undefined}
+                />
               ) : (
                 <div className="flex flex-col items-center text-slate-600">
                   <Activity className="w-12 h-12 mb-3 opacity-20" />

@@ -24,7 +24,7 @@ const LogsView = () => {
   const [filterCamera, setFilterCamera] = useState<string>('');
 
   useEffect(() => {
-    axios.get('/api/cameras').then(res => setCameras(res.data));
+    axios.get('/api/cameras').then(res => setCameras(Array.isArray(res.data) ? res.data : []));
     fetchLogs();
   }, [filterCamera]);
 
@@ -33,7 +33,7 @@ const LogsView = () => {
       ? `/api/analytics/logs?camera_id=${filterCamera}`
       : `/api/analytics/logs`;
       
-    axios.get(url).then(res => setLogs(res.data));
+    axios.get(url).then(res => setLogs(Array.isArray(res.data) ? res.data : []));
   };
 
   const getCameraName = (id: number) => cameras.find(c => c.id === id)?.name || `กล้อง ${id}`;

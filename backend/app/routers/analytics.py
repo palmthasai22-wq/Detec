@@ -60,9 +60,13 @@ def get_live_traffic(db: Session = Depends(get_db)):
             "lat": cam.lat,
             "lng": cam.lng,
             "active": processor is not None and stats is not None,
-            "jam_index": stats["congestion_index"] if stats else 0,
-            "density_level": stats["density"] if stats else "green",
-            "current_vehicles": stats["current_vehicles"] if stats else 0
+            "jam_index": stats.get("congestion_index", 0) if stats else 0,
+            "density_level": stats.get("density", "green") if stats else "green",
+            "traffic_state": stats.get("traffic_state", "OFFLINE") if stats else "OFFLINE",
+            "current_vehicles": stats.get("current_vehicles", 0) if stats else 0,
+            "average_speed": stats.get("average_speed", 0) if stats else 0,
+            "speed_unit": stats.get("speed_unit", "px/window") if stats else "px/window",
+            "updated_at": stats.get("updated_at") if stats else None,
         }
         results.append(cam_data)
         

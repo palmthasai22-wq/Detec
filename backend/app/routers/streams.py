@@ -20,6 +20,8 @@ async def video_stream(camera_id: int, db: Session = Depends(get_db)):
     camera = db.query(models.Camera).filter(models.Camera.id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
+    if camera.type == models.CameraType.embed or not camera.url:
+        raise HTTPException(status_code=409, detail="This camera is view-only; use its embed_url")
         
     config = {
         "density_green_threshold": camera.density_green_threshold,

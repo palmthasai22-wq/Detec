@@ -3,13 +3,9 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import axios from 'axios'
+import { API_BASE_URL } from './config/api.ts'
 
-// Use VITE_API_URL for production, fallback to relative path (Vite proxy) for local dev
-let apiUrl = import.meta.env.VITE_API_URL || '';
-if (apiUrl && apiUrl.startsWith('http://') && window.location.protocol === 'https:') {
-    apiUrl = apiUrl.replace('http://', 'https://');
-}
-axios.defaults.baseURL = apiUrl;
+axios.defaults.baseURL = API_BASE_URL;
 
 // Cache-buster interceptor to bypass Chrome's stubborn 307 redirect cache
 axios.interceptors.request.use(config => {

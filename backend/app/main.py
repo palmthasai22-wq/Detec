@@ -1,10 +1,22 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from sqlalchemy import inspect, text
 from .database import engine, Base
 from .routers import cameras, streams, analytics
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
+# create_all does not add columns to an existing SQLite database. Keep this
+# additive migration here so old Railway/local volumes remain compatible.
+with engine.begin() as connection:
+    camera_columns = {column["name"] for column in inspect(connection).get_columns("cameras")}
+    for column_name in ("embed_url", "embed_mode"):
+        if column_name not in camera_columns:
+            connection.execute(text(f"ALTER TABLE cameras ADD COLUMN {column_name} VARCHAR"))
 
 app = FastAPI(title="Traffic Detection & Analytics System")
 
@@ -22,4 +34,23 @@ app.include_router(analytics.router)
 
 @app.get("/")
 def root():
+    index_file = Path("frontend_dist/index.html")
+    if index_file.exists():
+        return FileResponse(index_file)
     return {"message": "Traffic Detection API is running"}
+
+frontend_assets = Path("frontend_dist/assets")
+if frontend_assets.is_dir():
+    app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
+
+@app.get("/{frontend_path:path}", include_in_schema=False)
+def frontend_fallback(frontend_path: str):
+    """Serve built frontend files and fall back to the SPA entry point."""
+    frontend_root = Path("frontend_dist").resolve()
+    requested_file = (frontend_root / frontend_path).resolve()
+    if frontend_root in requested_file.parents and requested_file.is_file():
+        return FileResponse(requested_file)
+    index_file = frontend_root / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Frontend is not built")

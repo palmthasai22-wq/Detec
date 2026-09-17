@@ -15,13 +15,27 @@ interface Camera {
   roboflow_api_key?: string;
   lat?: number;
   lng?: number;
+  embed_url?: string;
+  embed_mode?: 'image' | 'iframe';
 }
+
+const parseEmbedInput = (input: string) => {
+  const value = input.trim();
+  if (!value) return null;
+  const iframeMatch = value.match(/<iframe\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
+  const url = iframeMatch?.[1] || value;
+  const parsed = new URL(url);
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('URL ภาพสด/iframe ต้องเป็น http หรือ https');
+  return { url: parsed.toString(), mode: iframeMatch ? 'iframe' as const : 'image' as const };
+};
 
 const CameraManager = () => {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{success: boolean, message: string} | null>(null);
+  const [embedInput, setEmbedInput] = useState('');
+  const [submitError, setSubmitError] = useState('');
   const [formData, setFormData] = useState<any>({
     name: '', type: 'rtsp', url: '', 
     density_green_threshold: 10, density_yellow_threshold: 20,
@@ -32,7 +46,7 @@ const CameraManager = () => {
 
   const fetchCameras = () => {
     axios.get('/api/cameras')
-      .then(res => setCameras(res.data))
+      .then(res => setCameras(Array.isArray(res.data) ? res.data : []))
       .catch(err => console.error(err));
   };
 
@@ -40,19 +54,37 @@ const CameraManager = () => {
     fetchCameras();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...formData };
-    if (payload.lat) payload.lat = parseFloat(payload.lat);
-    if (payload.lng) payload.lng = parseFloat(payload.lng);
-    
-    axios.post('/api/cameras', payload)
-      .then(() => {
-        fetchCameras();
-        setShowForm(false);
-        setFormData({ name: '', type: 'rtsp', url: '', density_green_threshold: 10, density_yellow_threshold: 20, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
-        setTestResult(null);
-      });
+    setSubmitError('');
+    try {
+      const payload = { ...formData };
+      const embed = parseEmbedInput(embedInput);
+      payload.url = String(payload.url || '').trim();
+      if (!payload.url) delete payload.url;
+      if (embed) {
+        payload.embed_url = embed.url;
+        payload.embed_mode = embed.mode;
+        if (!payload.url) payload.type = 'embed';
+      }
+      if (payload.lat !== '' && payload.lng !== '') {
+        payload.lat = parseFloat(payload.lat);
+        payload.lng = parseFloat(payload.lng);
+      } else {
+        delete payload.lat;
+        delete payload.lng;
+      }
+      await axios.post('/api/cameras', payload);
+      fetchCameras();
+      setShowForm(false);
+      setEmbedInput('');
+      setFormData({ name: '', type: 'rtsp', url: '', density_green_threshold: 10, density_yellow_threshold: 20, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
+      setTestResult(null);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      const message = Array.isArray(detail) ? detail.map(item => item.msg).join(', ') : detail;
+      setSubmitError(message || err.message || 'บันทึกกล้องไม่สำเร็จ');
+    }
   };
 
   const handleDelete = (id: number) => {
@@ -116,12 +148,12 @@ const CameraManager = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">ละติจูด (Latitude)</label>
-                  <input className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" 
+                  <input type="number" min="-90" max="90" step="any" required={Boolean(formData.lng)} className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                     value={formData.lat} onChange={e => setFormData({...formData, lat: e.target.value})} placeholder="13.7563" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">ลองจิจูด (Longitude)</label>
-                  <input className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" 
+                  <input type="number" min="-180" max="180" step="any" required={Boolean(formData.lat)} className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                     value={formData.lng} onChange={e => setFormData({...formData, lng: e.target.value})} placeholder="100.5018" />
                 </div>
               </div>
@@ -134,6 +166,7 @@ const CameraManager = () => {
                     <option value="rtsp">RTSP (กล้องวงจรปิด)</option>
                     <option value="rtmp">RTMP (โดรน)</option>
                     <option value="file">ไฟล์วิดีโอ</option>
+                    <option value="embed">ภาพสด / iframe (ดูภาพอย่างเดียว)</option>
                   </select>
                 </div>
                 <div>
@@ -144,9 +177,9 @@ const CameraManager = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">ลิงก์เชื่อมต่อ (URL)</label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">URL สตรีมสำหรับ AI</label>
                 <div className="flex gap-2">
-                  <input required className="flex-1 bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-sm" 
+                  <input required={!embedInput.trim()} className="flex-1 bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-sm"
                     value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} 
                     placeholder={formData.type === 'rtsp' ? 'rtsp://admin:pass@192.168.1.100/stream' : 'rtmp://127.0.0.1/live/drone'} />
                   
@@ -155,9 +188,16 @@ const CameraManager = () => {
                       className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 rounded-lg flex items-center justify-center transition-colors border border-slate-600 disabled:opacity-50 min-w-[120px]">
                       {testing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'ทดสอบลิงก์'}
                     </button>
-                  )}
-                </div>
-                {testResult && (
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">URL ภาพสด หรือโค้ด iframe (ไม่บังคับ)</label>
+                <textarea rows={3} className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors font-mono text-xs"
+                  value={embedInput} onChange={e => setEmbedInput(e.target.value)}
+                  placeholder={'https://camera.example/live.jpg\nหรือ <iframe src="https://example.com/embed/camera"></iframe>'} />
+                <p className="mt-1 text-[10px] text-slate-500">ระบบจะเก็บเฉพาะ URL ที่ปลอดภัยจาก src และจะไม่รัน HTML ที่วางมาโดยตรง</p>
+              </div>
+              {testResult && (
                   <div className={`mt-3 p-3 rounded-md flex items-center gap-2 text-sm ${testResult.success ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
                     {testResult.success ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
                     {testResult.message}
@@ -216,6 +256,7 @@ const CameraManager = () => {
           </div>
           
           <div className="mt-8 flex justify-end gap-3">
+            {submitError && <div role="alert" className="mr-auto rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">{submitError}</div>}
             <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 rounded-lg text-slate-400 hover:text-white font-medium">ยกเลิก</button>
             <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-2.5 rounded-lg font-medium shadow-[0_0_15px_rgba(37,99,235,0.4)]">บันทึกและติดตั้ง</button>
           </div>
