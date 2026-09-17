@@ -35,7 +35,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
     }).catch(console.error);
 
     // WebSocket for stats
-    const ws = new WebSocket(`ws://${window.location.host}/api/analytics/ws`);
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const wsBaseUrl = apiUrl ? apiUrl.replace(/^http/, 'ws') : `ws://${window.location.host}`;
+    const ws = new WebSocket(`${wsBaseUrl}/api/analytics/ws`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
