@@ -14,9 +14,13 @@ Base.metadata.create_all(bind=engine)
 # Seed default admin user
 from .database import SessionLocal
 db = SessionLocal()
-if not db.query(models.User).filter(models.User.username == "admin").first():
+admin_user = db.query(models.User).filter(models.User.username == "admin").first()
+if not admin_user:
     db.add(models.User(username="admin", hashed_password=get_password_hash("admin")))
-    db.commit()
+else:
+    # Force reset password to 'admin' in case of previous broken hashes
+    admin_user.hashed_password = get_password_hash("admin")
+db.commit()
 db.close()
 
 app = FastAPI(title="AI Video Intelligence & Real-Time Streaming Platform")
