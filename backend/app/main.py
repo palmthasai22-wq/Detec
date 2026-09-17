@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import shutil
 from sqlalchemy import inspect, text
 from uuid import uuid4
-from .database import engine, Base
+from .database import engine, Base, SessionLocal
+from . import models
 from .routers import cameras, streams, analytics
 
 # Create tables
@@ -27,6 +29,24 @@ with engine.begin() as connection:
             {"public_id": uuid4().hex, "camera_id": row.id},
         )
     connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_cameras_public_id ON cameras (public_id)"))
+
+# Keep uploaded files on the same persistent volume as the production database.
+# A local-snapshot deploy may still contain legacy /app/uploads files, so move a
+# copy into the volume and update their database paths once.
+with SessionLocal() as session:
+    for camera in session.query(models.Camera).filter(models.Camera.type == models.CameraType.file).all():
+        if not camera.url:
+            continue
+        source = Path(camera.url)
+        if not source.is_absolute():
+            source = (Path.cwd() / source).resolve()
+        target = (streams.UPLOAD_DIR / source.name).resolve()
+        if source != target and source.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                shutil.copy2(source, target)
+            camera.url = str(target)
+    session.commit()
 
 app = FastAPI(title="Traffic Detection & Analytics System")
 

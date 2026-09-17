@@ -5,6 +5,8 @@ import shutil
 import os
 import cv2
 from html import escape
+from pathlib import Path
+from uuid import uuid4
 from .. import models
 from ..database import get_db
 from ..stream_manager import stream_manager
@@ -15,7 +17,17 @@ router = APIRouter(
 )
 public_router = APIRouter(tags=["public-live"])
 
-os.makedirs("uploads", exist_ok=True)
+def _upload_directory():
+    configured = os.getenv("DETEC_UPLOAD_DIR")
+    if configured:
+        return Path(configured)
+    database_path = Path(os.getenv("DETEC_DB_PATH", "./detec.db"))
+    if database_path.is_absolute():
+        return database_path.parent / "uploads"
+    return Path("uploads")
+
+UPLOAD_DIR = _upload_directory()
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def _get_processor(camera):
     if camera.type == models.CameraType.embed or not camera.url:
@@ -97,15 +109,17 @@ async def public_mjpeg_stream(public_id: str, db: Session = Depends(get_db)):
 
 @router.post("/upload")
 async def upload_video(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    file_path = f"uploads/{file.filename}"
+    original_name = Path(file.filename or "video.mp4").name
+    stored_name = f"{uuid4().hex}_{original_name}"
+    file_path = UPLOAD_DIR / stored_name
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
     # Create a camera entry for this file
     new_camera = models.Camera(
-        name=f"Upload: {file.filename}",
+        name=f"Upload: {original_name}",
         type=models.CameraType.file,
-        url=file_path
+        url=str(file_path),
     )
     db.add(new_camera)
     db.commit()
@@ -116,8 +130,8 @@ async def upload_video(file: UploadFile = File(...), db: Session = Depends(get_d
         "camera_id": new_camera.id,
         "public_id": new_camera.public_id,
         "monitor_path": f"/live/{new_camera.public_id}",
-        "filename": file.filename,
-        "path": file_path,
+        "filename": original_name,
+        "path": str(file_path),
     }
 
 @router.post("/test-connection")
