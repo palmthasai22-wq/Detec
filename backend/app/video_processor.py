@@ -12,6 +12,63 @@ from .density_analyzer import DensityAnalyzer
 from .traffic_analyzer import TrafficAnalyzer
 from .source_validator import SourceValidator
 from .youtube_extractor import YouTubeExtractor
+import subprocess
+
+class FFmpegCapture:
+    """A wrapper to read frames directly from FFmpeg stdout to bypass OpenCV HTTPS limitations"""
+    def __init__(self, url):
+        self.url = url
+        self.pipe = None
+        self.width = 1280
+        self.height = 720
+        
+    def isOpened(self):
+        return self.pipe is not None
+        
+    def open(self):
+        # We probe first or just hardcode 720p for fast loading
+        command = [
+            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+            '-i', self.url,
+            '-f', 'image2pipe', '-pix_fmt', 'bgr24',
+            '-vcodec', 'rawvideo',
+            '-s', f"{self.width}x{self.height}", '-'
+        ]
+        try:
+            self.pipe = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**8)
+            return True
+        except Exception:
+            return False
+            
+    def read(self):
+        if not self.pipe:
+            return False, None
+        
+        frame_size = self.width * self.height * 3
+        raw_image = self.pipe.stdout.read(frame_size)
+        if len(raw_image) != frame_size:
+            return False, None
+            
+        frame = np.frombuffer(raw_image, dtype=np.uint8).reshape((self.height, self.width, 3))
+        return True, frame
+        
+    def release(self):
+        if self.pipe:
+            self.pipe.terminate()
+            self.pipe = None
+
+    def set(self, prop, val):
+        pass
+
+def _open_capture(url, source_type):
+    # If youtube, prefer OpenCV but if it's HTTPS it might fail. Actually FFmpegCapture is much safer for HLS/YouTube
+    if source_type in ["youtube", "youtube_live"]:
+        cap = FFmpegCapture(url)
+        if cap.open():
+            return cap
+            
+    cap = cv2.VideoCapture(url)
+    return cap
 
 # Fallback classes map for labeling
 CLASS_NAMES_DICT = {
@@ -205,63 +262,7 @@ class VideoProcessor:
         finally:
             await self.release_viewer()
 
-import subprocess
 
-class FFmpegCapture:
-    """A wrapper to read frames directly from FFmpeg stdout to bypass OpenCV HTTPS limitations"""
-    def __init__(self, url):
-        self.url = url
-        self.pipe = None
-        self.width = 1280
-        self.height = 720
-        
-    def isOpened(self):
-        return self.pipe is not None
-        
-    def open(self):
-        # We probe first or just hardcode 720p for fast loading
-        command = [
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-            '-i', self.url,
-            '-f', 'image2pipe', '-pix_fmt', 'bgr24',
-            '-vcodec', 'rawvideo',
-            '-s', f"{self.width}x{self.height}", '-'
-        ]
-        try:
-            self.pipe = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**8)
-            return True
-        except Exception:
-            return False
-            
-    def read(self):
-        if not self.pipe:
-            return False, None
-        
-        frame_size = self.width * self.height * 3
-        raw_image = self.pipe.stdout.read(frame_size)
-        if len(raw_image) != frame_size:
-            return False, None
-            
-        frame = np.frombuffer(raw_image, dtype=np.uint8).reshape((self.height, self.width, 3))
-        return True, frame
-        
-    def release(self):
-        if self.pipe:
-            self.pipe.terminate()
-            self.pipe = None
-
-    def set(self, prop, val):
-        pass
-
-def _open_capture(url, source_type):
-    # If youtube, prefer OpenCV but if it's HTTPS it might fail. Actually FFmpegCapture is much safer for HLS/YouTube
-    if source_type in ["youtube", "youtube_live"]:
-        cap = FFmpegCapture(url)
-        if cap.open():
-            return cap
-            
-    cap = cv2.VideoCapture(url)
-    return cap
 
     def get_actual_url(self):
         if self.source_type in ["youtube", "youtube_live"]:
