@@ -10,6 +10,7 @@ from uuid import uuid4
 from .. import models
 from ..database import get_db
 from ..stream_manager import stream_manager
+from ..youtube_extractor import YouTubeExtractor
 
 router = APIRouter(
     prefix="/api/streams",
