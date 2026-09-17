@@ -10,3 +10,7 @@ pydantic
 pydantic-settings
 alembic
 yt-dlp==2023.12.30
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==3.2.2
+psutil
