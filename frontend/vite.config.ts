@@ -12,6 +12,10 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/live': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, Trash2, Wifi, WifiOff, Loader2, Cpu, CloudLightning } from 'lucide-react';
+import { getApiUrl } from '../config/api';
 
 interface Camera {
   id: number;
@@ -17,6 +18,7 @@ interface Camera {
   lng?: number;
   embed_url?: string;
   embed_mode?: 'image' | 'iframe';
+  public_id: string;
 }
 
 const parseEmbedInput = (input: string) => {
@@ -284,6 +286,17 @@ const CameraManager = () => {
             <div className="bg-black/50 rounded-lg p-3 mb-4 border border-slate-800">
               <p className="text-xs font-mono text-slate-400 truncate" title={camera.url}>{camera.url}</p>
             </div>
+            {camera.type !== 'embed' && camera.public_id && (
+              <div className="mb-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">URL จอมอนิเตอร์</p>
+                <div className="flex gap-2">
+                  <a href={getApiUrl(`/live/${camera.public_id}`)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-mono text-[10px] text-cyan-300 hover:text-cyan-200">
+                    {getApiUrl(`/live/${camera.public_id}`)}
+                  </a>
+                  <button type="button" onClick={() => navigator.clipboard.writeText(getApiUrl(`/live/${camera.public_id}`))} className="rounded bg-cyan-600/20 px-2 py-1 text-[10px] font-semibold text-cyan-300 hover:bg-cyan-600/30">คัดลอก</button>
+                </div>
+              </div>
+            )}
             <div className="flex justify-between items-center text-sm border-t border-slate-800/60 pt-4">
               <span className="text-slate-400">ความไวแจ้งเตือนรถติด</span>
               <span className="font-medium text-white">{camera.density_yellow_threshold} คัน</span>

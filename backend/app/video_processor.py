@@ -4,6 +4,7 @@ import asyncio
 import requests
 import base64
 import math
+import os
 from datetime import datetime, timezone
 from collections import deque
 from ultralytics import YOLO
@@ -27,6 +28,12 @@ class VideoProcessor:
         self.cam_type = cam_type
         self.config = config
         self.running = False
+        self.latest_frame = None
+        self.frame_version = 0
+        self.frame_condition = asyncio.Condition()
+        self.viewer_lock = asyncio.Lock()
+        self.viewer_count = 0
+        self.max_viewers = max(1, int(os.getenv("DETEC_MAX_VIEWERS_PER_CAMERA", "30")))
         
         self.tracker = sv.ByteTrack()
         self.track_history = {} 
@@ -189,15 +196,53 @@ class VideoProcessor:
         }
         
         print(f"[AI Macro] State: {macro_state} | Speed: {avg_speed:.1f} | Jam Index: {congestion_index}%")
-        return macro_state, avg_speed, self.track_history.copy(), stats
+        boxes = tracked_detections.xyxy.tolist() if len(tracked_detections) else []
+        return macro_state, avg_speed, self.track_history.copy(), boxes, stats
 
-    async def generate_frames(self, broadcast_queue: asyncio.Queue):
+    async def reserve_viewer(self):
+        async with self.viewer_lock:
+            if self.viewer_count >= self.max_viewers:
+                return False
+            self.viewer_count += 1
+            return True
+
+    async def release_viewer(self):
+        async with self.viewer_lock:
+            self.viewer_count = max(0, self.viewer_count - 1)
+
+    async def mjpeg_frames(self):
+        """Fan out the already encoded latest frame without rerunning AI per viewer."""
+        last_version = -1
+        try:
+            while True:
+                async with self.frame_condition:
+                    await self.frame_condition.wait_for(
+                        lambda: self.frame_version != last_version or not self.running
+                    )
+                    if self.latest_frame is None and not self.running:
+                        break
+                    frame_bytes = self.latest_frame
+                    last_version = self.frame_version
+                if frame_bytes is not None:
+                    yield (
+                        b'--frame\r\n'
+                        b'Content-Type: image/jpeg\r\n'
+                        b'Cache-Control: no-cache\r\n\r\n' + frame_bytes + b'\r\n'
+                    )
+                if not self.running:
+                    break
+        finally:
+            await self.release_viewer()
+
+    async def run(self, broadcast_queue: asyncio.Queue):
         cap = cv2.VideoCapture(self.source_url)
         self.running = True
         
         last_macro_state = "CLEAR"
         last_avg_speed = 0.0
         last_track_trails = {}
+        last_boxes = []
+        last_stats = {"congestion_index": 0, "current_vehicles": 0}
         
         processing_task = None
         
@@ -232,7 +277,8 @@ class VideoProcessor:
             if processing_task is None or processing_task.done():
                 if processing_task and processing_task.done():
                     try:
-                        last_macro_state, last_avg_speed, last_track_trails, stats = processing_task.result()
+                        last_macro_state, last_avg_speed, last_track_trails, last_boxes, stats = processing_task.result()
+                        last_stats = stats
                         self.latest_stats = stats
                         try:
                             broadcast_queue.put_nowait(stats)
@@ -257,7 +303,7 @@ class VideoProcessor:
             else:
                 color_bgr = (0, 255, 0) # Green
 
-            cv2.rectangle(overlay, (0, 0), (w, 110), color_bgr, -1)
+            cv2.rectangle(overlay, (0, 0), (w, 125), color_bgr, -1)
             cv2.rectangle(overlay, (0, 0), (w, h), color_bgr, 15)
             
             # Draw Wait Zone
@@ -277,9 +323,19 @@ class VideoProcessor:
                     cx, cy = int(history[-1][0] * scale_ratio), int(history[-1][1] * scale_ratio)
                     cv2.circle(annotated_frame, (cx, cy), 6, (255, 255, 255), -1)
                     cv2.circle(annotated_frame, (cx, cy), 8, color_bgr, 2)
+
+            for x1, y1, x2, y2 in last_boxes:
+                cv2.rectangle(
+                    annotated_frame,
+                    (int(x1 * scale_ratio), int(y1 * scale_ratio)),
+                    (int(x2 * scale_ratio), int(y2 * scale_ratio)),
+                    color_bgr,
+                    2,
+                )
             
-            cv2.putText(annotated_frame, f"TRAFFIC FLOW: {last_macro_state}", (30, 45), cv2.FONT_HERSHEY_DUPLEX, 1.2, (255, 255, 255), 3)
-            cv2.putText(annotated_frame, f"AVG SPEED: {last_avg_speed:.1f} px/s | FLOW VECTORS: {len(last_track_trails)}", (30, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
+            cv2.putText(annotated_frame, f"TRAFFIC FLOW: {last_macro_state}", (30, 38), cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 3)
+            cv2.putText(annotated_frame, f"JAM INDEX: {last_stats['congestion_index']}% | VEHICLES: {last_stats['current_vehicles']}", (30, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            cv2.putText(annotated_frame, f"AVG SPEED: {last_avg_speed:.1f} px/window", (30, 106), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
             
             if self.config and self.config.get("counting_line"):
                 line_coords = self.config["counting_line"]
@@ -292,14 +348,20 @@ class VideoProcessor:
             
             # Optimize JPEG encoding (Quality 60 is plenty for dashboard, drastically reduces bandwidth & lag)
             ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            if not ret:
+                continue
             frame_bytes = buffer.tobytes()
+            async with self.frame_condition:
+                self.latest_frame = frame_bytes
+                self.frame_version += 1
+                self.frame_condition.notify_all()
             
             if self.cam_type == "file":
                 await asyncio.sleep(0.04) # Cap at 25fps for smoother web streaming
             else:
                 await asyncio.sleep(0.005) # Yield event loop slightly more often
                 
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                   
         cap.release()
+        self.running = False
+        async with self.frame_condition:
+            self.frame_condition.notify_all()

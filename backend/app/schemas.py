@@ -81,6 +81,7 @@ class CameraUpdate(BaseModel):
 
 class Camera(CameraBase):
     id: int
+    public_id: str
 
     class Config:
         from_attributes = True

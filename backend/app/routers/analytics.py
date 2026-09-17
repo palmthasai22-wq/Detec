@@ -56,6 +56,8 @@ def get_live_traffic(db: Session = Depends(get_db)):
         # If no active stats, return default structure but with lat/lng
         cam_data = {
             "camera_id": cam.id,
+            "public_id": cam.public_id,
+            "monitor_path": f"/live/{cam.public_id}",
             "name": cam.name,
             "lat": cam.lat,
             "lng": cam.lng,

@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, JSON
 from datetime import datetime
 from .database import Base
 import enum
+import uuid
 
 class CameraType(str, enum.Enum):
     rtsp = "rtsp"
@@ -13,6 +14,7 @@ class Camera(Base):
     __tablename__ = "cameras"
 
     id = Column(Integer, primary_key=True, index=True)
+    public_id = Column(String, unique=True, index=True, nullable=False, default=lambda: uuid.uuid4().hex)
     name = Column(String, index=True)
     type = Column(Enum(CameraType), default=CameraType.rtsp)
     url = Column(String, nullable=True)  # AI stream URL or file path

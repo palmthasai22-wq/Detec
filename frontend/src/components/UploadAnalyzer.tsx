@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Upload as UploadIcon, Check, Map, RotateCcw } from 'lucide-react';
+import { getApiUrl } from '../config/api';
 
 const UploadAnalyzer: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -10,6 +11,7 @@ const UploadAnalyzer: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [lat, setLat] = useState<string>('');
   const [lng, setLng] = useState<string>('');
+  const [monitorUrl, setMonitorUrl] = useState<string>('');
 
   useEffect(() => {
     if (file) {
@@ -39,6 +41,7 @@ const UploadAnalyzer: React.FC = () => {
     try {
       const res = await axios.post('/api/streams/upload', formData);
       setCameraId(res.data.camera_id);
+      setMonitorUrl(getApiUrl(res.data.monitor_path || `/live/${res.data.public_id}`));
       setStep(2);
     } catch (err: any) {
       console.error(err);
@@ -203,6 +206,18 @@ const UploadAnalyzer: React.FC = () => {
               <input type="text" value={lng} onChange={e => setLng(e.target.value)} placeholder="เช่น 100.5018" className="w-full bg-black/50 border border-slate-700 rounded-lg p-2.5 text-white focus:border-blue-500 outline-none transition-colors" />
             </div>
           </div>
+
+          {monitorUrl && (
+            <div className="mt-5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-cyan-300">URL จอมอนิเตอร์สำหรับ Impex Spot</label>
+              <div className="flex gap-2">
+                <input readOnly value={monitorUrl} className="min-w-0 flex-1 rounded-md border border-slate-700 bg-black/50 p-2.5 font-mono text-xs text-white" />
+                <button type="button" onClick={() => navigator.clipboard.writeText(monitorUrl)} className="rounded-md bg-cyan-600 px-4 text-sm font-medium text-white hover:bg-cyan-500">คัดลอก URL</button>
+                <a href={monitorUrl} target="_blank" rel="noreferrer" className="rounded-md border border-cyan-500/40 px-4 py-2 text-sm font-medium text-cyan-300 hover:bg-cyan-500/10">เปิดดู</a>
+              </div>
+              <p className="mt-2 text-[10px] text-slate-400">นำ URL นี้ไปใส่ช่อง “URL สตรีมภายนอก” ในหน้าจัดการกล้อง CCTV ของ Impex Spot</p>
+            </div>
+          )}
           
           <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-800">
              <button 

@@ -11,15 +11,24 @@ class StreamManager:
         self.active_streams: Dict[int, VideoProcessor] = {}
         self.stats_queues: Dict[int, asyncio.Queue] = {}
         self.db_tasks: Dict[int, asyncio.Task] = {}
+        self.processing_tasks: Dict[int, asyncio.Task] = {}
 
     def get_or_create_stream(self, camera_id: int, source_url: str, cam_type: str, config: dict):
-        if camera_id not in self.active_streams:
+        processing_task = self.processing_tasks.get(camera_id)
+        if camera_id not in self.active_streams or processing_task is None or processing_task.done():
+            old_db_task = self.db_tasks.pop(camera_id, None)
+            if old_db_task:
+                old_db_task.cancel()
             processor = VideoProcessor(camera_id, source_url, cam_type, config)
+            processor.running = True
             self.active_streams[camera_id] = processor
             self.stats_queues[camera_id] = asyncio.Queue(maxsize=10)
             
             # Start background task to broadcast and save stats
             self.db_tasks[camera_id] = asyncio.create_task(self._process_stats(camera_id))
+            self.processing_tasks[camera_id] = asyncio.create_task(
+                processor.run(self.stats_queues[camera_id])
+            )
             
         return self.active_streams[camera_id], self.stats_queues[camera_id]
         
@@ -59,6 +68,9 @@ class StreamManager:
         if camera_id in self.db_tasks:
             self.db_tasks[camera_id].cancel()
             del self.db_tasks[camera_id]
+        if camera_id in self.processing_tasks:
+            self.processing_tasks[camera_id].cancel()
+            del self.processing_tasks[camera_id]
         if camera_id in self.stats_queues:
             del self.stats_queues[camera_id]
 

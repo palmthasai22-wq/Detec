@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from sqlalchemy import inspect, text
+from uuid import uuid4
 from .database import engine, Base
 from .routers import cameras, streams, analytics
 
@@ -14,9 +15,18 @@ Base.metadata.create_all(bind=engine)
 # additive migration here so old Railway/local volumes remain compatible.
 with engine.begin() as connection:
     camera_columns = {column["name"] for column in inspect(connection).get_columns("cameras")}
-    for column_name in ("embed_url", "embed_mode"):
+    for column_name in ("embed_url", "embed_mode", "public_id"):
         if column_name not in camera_columns:
             connection.execute(text(f"ALTER TABLE cameras ADD COLUMN {column_name} VARCHAR"))
+    missing_public_ids = connection.execute(
+        text("SELECT id FROM cameras WHERE public_id IS NULL OR public_id = ''")
+    ).fetchall()
+    for row in missing_public_ids:
+        connection.execute(
+            text("UPDATE cameras SET public_id = :public_id WHERE id = :camera_id"),
+            {"public_id": uuid4().hex, "camera_id": row.id},
+        )
+    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_cameras_public_id ON cameras (public_id)"))
 
 app = FastAPI(title="Traffic Detection & Analytics System")
 
@@ -30,6 +40,7 @@ app.add_middleware(
 
 app.include_router(cameras.router)
 app.include_router(streams.router)
+app.include_router(streams.public_router)
 app.include_router(analytics.router)
 
 @app.get("/")
