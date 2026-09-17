@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException
+import os
+# Set User-Agent for OpenCV's FFmpeg backend so YouTube doesn't block cv2.VideoCapture(url)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "user_agent;Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

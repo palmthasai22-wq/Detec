@@ -68,7 +68,7 @@ async def _stream_response(channel):
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )
 
-@router.get("/{camera_id}/stream.mjpg")
+@router.get("/{camera_id}")
 async def video_stream(camera_id: int, db: Session = Depends(get_db)):
     channel = db.query(models.Channel).filter(models.Channel.id == camera_id).first()
     if not channel:
@@ -107,6 +107,16 @@ def test_connection(payload: dict):
     url = payload.get("url", "")
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
+    
+    # Pre-process youtube URLs
+    if "youtube.com" in url or "youtu.be" in url:
+        yt_info = YouTubeExtractor.get_stream_url(url)
+        if yt_info.get("error"):
+            return {"success": False, "error": f"YouTube Extractor Error: {yt_info['error']}"}
+        url = yt_info.get("url", url)
+        
+    if not url:
+        return {"success": False, "error": "Could not extract stream URL"}
     
     try:
         cap = cv2.VideoCapture(url)

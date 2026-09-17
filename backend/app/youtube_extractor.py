@@ -1,5 +1,15 @@
 import yt_dlp
+import ssl
+import certifi
+import urllib.request
 from typing import Dict, Any
+
+# Globally patch SSL context for urllib (used by yt-dlp) to avoid CERTIFICATE_VERIFY_FAILED
+try:
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    ssl._create_default_https_context = lambda: ssl_context
+except Exception:
+    pass
 
 class YouTubeExtractor:
     @staticmethod
