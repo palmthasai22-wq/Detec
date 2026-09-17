@@ -29,7 +29,51 @@ def _upload_directory():
 UPLOAD_DIR = _upload_directory()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Removed legacy MJPEG stream endpoints that depended on models.Camera
+def _get_processor(channel):
+    if channel.source_type == "embed" or not channel.source_url:
+        raise HTTPException(status_code=409, detail="This camera is view-only; use its embed_url")
+        
+    config = {
+        "density_green_threshold": channel.density_green_threshold,
+        "density_yellow_threshold": channel.density_yellow_threshold,
+        "confidence_threshold": channel.confidence_threshold,
+        "counting_line": channel.counting_line,
+        "wait_zone": channel.wait_zone,
+        "engine": channel.engine,
+        "roboflow_model_id": channel.roboflow_model_id,
+        "roboflow_api_key": channel.roboflow_api_key,
+    }
+    
+    url = channel.source_url
+    if channel.source_type == "file" or channel.source_type == "mp4":
+        url = os.path.join(os.getcwd(), url)
+        
+    processor, queue = stream_manager.get_or_create_stream(
+        channel, channel.zones
+    )
+    return processor
+
+async def _stream_response(channel):
+    processor = _get_processor(channel)
+    if not await processor.reserve_viewer():
+        return Response(
+            content="ผู้ชมเต็ม กรุณาลองใหม่ภายหลัง",
+            status_code=503,
+            media_type="text/plain; charset=utf-8",
+            headers={"Retry-After": "10"},
+        )
+    return StreamingResponse(
+        processor.mjpeg_frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+@router.get("/{camera_id}/stream.mjpg")
+async def video_stream(camera_id: int, db: Session = Depends(get_db)):
+    channel = db.query(models.Channel).filter(models.Channel.id == camera_id).first()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    return await _stream_response(channel)
 
 @router.post("/upload")
 async def upload_video(file: UploadFile = File(...), db: Session = Depends(get_db)):

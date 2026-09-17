@@ -7,7 +7,7 @@ class YouTubeExtractor:
         """
         Returns: {"url": str, "is_live": bool, "title": str, "resolution": str, "fps": int, "error": str}
         """
-        ydl_opts = {'quiet': True, 'format': 'best'}
+        ydl_opts = {'quiet': True, 'format': 'best', 'no_check_certificate': True}
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
