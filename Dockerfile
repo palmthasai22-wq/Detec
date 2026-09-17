@@ -10,20 +10,14 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up a new user named "user" with user ID 1000 for Hugging Face
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH
-
-WORKDIR $HOME/app
+WORKDIR /app
 
 # Copy the backend requirements and install
-COPY --chown=user:user backend/requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire backend directory to the container
-COPY --chown=user:user backend/ .
+COPY backend/ .
 
 # Ensure uploads and database have correct permissions
 RUN mkdir -p uploads && chmod 777 uploads
