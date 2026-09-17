@@ -9,7 +9,7 @@ router = APIRouter(
     tags=["cameras"],
 )
 
-@router.get("/", response_model=List[schemas.Camera])
+@router.get("", response_model=List[schemas.Camera])
 def read_cameras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     cameras = db.query(models.Camera).offset(skip).limit(limit).all()
     return cameras
@@ -21,7 +21,7 @@ def read_camera(camera_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Camera not found")
     return camera
 
-@router.post("/", response_model=schemas.Camera)
+@router.post("", response_model=schemas.Camera)
 def create_camera(camera: schemas.CameraCreate, db: Session = Depends(get_db)):
     db_camera = models.Camera(**camera.dict())
     db.add(db_camera)
