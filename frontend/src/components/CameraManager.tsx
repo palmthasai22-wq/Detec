@@ -6,8 +6,8 @@ import { getApiUrl } from '../config/api';
 interface Camera {
   id: number;
   name: string;
-  type: string;
-  url: string;
+  source_type: string;
+  source_url: string;
   density_green_threshold: number;
   density_yellow_threshold: number;
   confidence_threshold: number;
@@ -39,7 +39,7 @@ const CameraManager = () => {
   const [embedInput, setEmbedInput] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [formData, setFormData] = useState<any>({
-    name: '', type: 'rtsp', url: '', 
+    name: '', source_type: 'rtsp', source_url: '', 
     density_green_threshold: 10, density_yellow_threshold: 20,
     confidence_threshold: 0.15,
     engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '',
@@ -62,12 +62,13 @@ const CameraManager = () => {
     try {
       const payload = { ...formData };
       const embed = parseEmbedInput(embedInput);
-      payload.url = String(payload.url || '').trim();
-      if (!payload.url) delete payload.url;
+      payload.source_url = String(payload.source_url || '').trim();
+      if (!payload.source_url) delete payload.source_url;
+      
       if (embed) {
         payload.embed_url = embed.url;
         payload.embed_mode = embed.mode;
-        if (!payload.url) payload.type = 'embed';
+        if (!payload.source_url) payload.source_type = 'embed';
       }
       if (payload.lat !== '' && payload.lng !== '') {
         payload.lat = parseFloat(payload.lat);
@@ -80,7 +81,7 @@ const CameraManager = () => {
       fetchCameras();
       setShowForm(false);
       setEmbedInput('');
-      setFormData({ name: '', type: 'rtsp', url: '', density_green_threshold: 10, density_yellow_threshold: 20, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
+      setFormData({ name: '', source_type: 'rtsp', source_url: '', density_green_threshold: 10, density_yellow_threshold: 20, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
       setTestResult(null);
     } catch (err: any) {
       const detail = err.response?.data?.detail;
@@ -97,11 +98,11 @@ const CameraManager = () => {
   };
 
   const handleTestConnection = async () => {
-    if (!formData.url) return;
+    if (!formData.source_url) return;
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await axios.post('/api/streams/test-connection', { url: formData.url });
+      const res = await axios.post('/api/streams/test-connection', { url: formData.source_url });
       setTestResult({
         success: res.data.status === 'success',
         message: res.data.message === 'Connection successful' ? 'เชื่อมต่อสำเร็จ' : (res.data.message || 'เชื่อมต่อสำเร็จ')
@@ -164,11 +165,13 @@ const CameraManager = () => {
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">ประเภท</label>
                   <select className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                    value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}>
+                    value={formData.source_type} onChange={e => setFormData({...formData, source_type: e.target.value as any})}>
                     <option value="rtsp">RTSP (กล้องวงจรปิด)</option>
                     <option value="rtmp">RTMP (โดรน)</option>
-                    <option value="file">ไฟล์วิดีโอ</option>
-                    <option value="embed">ภาพสด / iframe (ดูภาพอย่างเดียว)</option>
+                    <option value="mp4">ไฟล์วิดีโอ (MP4)</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="youtube_live">YouTube Live</option>
+                    <option value="hls">HLS Stream</option>
                   </select>
                 </div>
                 <div>
@@ -182,11 +185,11 @@ const CameraManager = () => {
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">URL สตรีมสำหรับ AI</label>
                 <div className="flex gap-2">
                   <input required={!embedInput.trim()} className="flex-1 bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-sm"
-                    value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} 
-                    placeholder={formData.type === 'rtsp' ? 'rtsp://admin:pass@192.168.1.100/stream' : 'rtmp://127.0.0.1/live/drone'} />
+                    value={formData.source_url} onChange={e => setFormData({...formData, source_url: e.target.value})} 
+                    placeholder={formData.source_type === 'rtsp' ? 'rtsp://admin:pass@192.168.1.100/stream' : 'rtmp://127.0.0.1/live/drone'} />
                   
-                  {formData.type !== 'file' && (
-                    <button type="button" onClick={handleTestConnection} disabled={testing || !formData.url}
+                  {formData.source_type !== 'file' && (
+                    <button type="button" onClick={handleTestConnection} disabled={testing || !formData.source_url}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 rounded-lg flex items-center justify-center transition-colors border border-slate-600 disabled:opacity-50 min-w-[120px]">
                       {testing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'ทดสอบลิงก์'}
                     </button>
@@ -280,13 +283,13 @@ const CameraManager = () => {
               </div>
               <div>
                 <h3 className="font-bold text-white text-lg">{camera.name}</h3>
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{camera.type.toUpperCase()} • {(camera.engine || 'yolo').toUpperCase()}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{camera.source_type.toUpperCase()} • {(camera.engine || 'yolo').toUpperCase()}</span>
               </div>
             </div>
             <div className="bg-black/50 rounded-lg p-3 mb-4 border border-slate-800">
-              <p className="text-xs font-mono text-slate-400 truncate" title={camera.url}>{camera.url}</p>
+              <p className="text-xs font-mono text-slate-400 truncate" title={camera.source_url}>{camera.source_url}</p>
             </div>
-            {camera.type !== 'embed' && camera.public_id && (
+            {camera.source_type !== 'embed' && camera.public_id && (
               <div className="mb-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">URL จอมอนิเตอร์</p>
                 <div className="flex gap-2">
