@@ -11,6 +11,14 @@ if (apiUrl && apiUrl.startsWith('http://') && window.location.protocol === 'http
 }
 axios.defaults.baseURL = apiUrl;
 
+// Cache-buster interceptor to bypass Chrome's stubborn 307 redirect cache
+axios.interceptors.request.use(config => {
+    if (config.method === 'get') {
+        config.params = { ...config.params, _t: Date.now() };
+    }
+    return config;
+});
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
