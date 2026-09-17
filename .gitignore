@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Node
+node_modules/
+dist/
+npm-debug.log*
+
+# Database & Uploads
+backend/detec.db
+backend/uploads/
+frontend/uploads/
+
+# OS
+.DS_Store
+Thumbs.db

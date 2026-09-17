@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+ultralytics
+supervision
+opencv-python-headless
+python-multipart
+websockets
+pydantic
+pydantic-settings
+alembic
