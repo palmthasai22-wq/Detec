@@ -26,6 +26,9 @@ class FFmpegCapture:
         return self.pipe is not None
         
     def open(self):
+        if not self.url or "youtube.com" in self.url or "youtu.be" in self.url:
+            return False
+            
         # We probe first or just hardcode 720p for fast loading
         command = [
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
@@ -273,6 +276,7 @@ class VideoProcessor:
             yt_info = YouTubeExtractor.get_stream_url(self.source_url)
             if yt_info.get("url"):
                 return yt_info["url"]
+            return ""
         return self.source_url
 
     async def run(self, broadcast_queue: asyncio.Queue):

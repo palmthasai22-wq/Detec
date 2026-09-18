@@ -8,14 +8,13 @@ RUN npm run build
 
 FROM python:3.10-slim
 
-# Install system dependencies for OpenCV and ByteTrack
+# Install system dependencies for OpenCV and FFmpeg, plus nodejs for yt-dlp JS execution
 RUN apt-get update && apt-get install -y \
-    libglib2.0-0 \
+    ffmpeg \
     libsm6 \
     libxext6 \
-    libxrender-dev \
     libgl1 \
-    ffmpeg \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
