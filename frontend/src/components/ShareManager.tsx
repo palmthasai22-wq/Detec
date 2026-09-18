@@ -129,12 +129,26 @@ export const ShareManager: React.FC<ShareManagerProps> = ({
               </div>
             </div>
 
+            <label className="text-xs font-semibold text-slate-400 mt-4 mb-1 block">Public Viewer URL (Dashboard)</label>
             <div className="bg-[#121212] border border-gray-700 rounded-lg flex items-center justify-between p-1.5">
               <div className="px-3 overflow-hidden">
                 <p className="text-sm text-gray-300 truncate w-64">{publicLink}</p>
               </div>
               <button 
                 onClick={() => copyLink(publicLink)}
+                className="bg-[#3EA6FF] hover:bg-[#5EBBFF] text-black font-medium text-sm px-4 py-2 rounded-full transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+
+            <label className="text-xs font-semibold text-slate-400 mt-4 mb-1 block">Direct Stream URL (For Maps/CCTV)</label>
+            <div className="bg-[#121212] border border-gray-700 rounded-lg flex items-center justify-between p-1.5">
+              <div className="px-3 overflow-hidden">
+                <p className="text-sm text-gray-300 truncate w-64">{`${window.location.origin}/api/streams/${channel_id}`}</p>
+              </div>
+              <button 
+                onClick={() => copyLink(`${window.location.origin}/api/streams/${channel_id}`)}
                 className="bg-[#3EA6FF] hover:bg-[#5EBBFF] text-black font-medium text-sm px-4 py-2 rounded-full transition-colors"
               >
                 Copy
