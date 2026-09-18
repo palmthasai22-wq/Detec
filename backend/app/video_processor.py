@@ -61,8 +61,10 @@ class FFmpegCapture:
         pass
 
 def _open_capture(url, source_type):
-    # If youtube, prefer OpenCV but if it's HTTPS it might fail. Actually FFmpegCapture is much safer for HLS/YouTube
-    if source_type in ["youtube", "youtube_live"]:
+    # Auto-detect youtube if the user selected wrong source_type
+    is_youtube = source_type in ["youtube", "youtube_live"] or "youtube.com" in url or "youtu.be" in url or "manifest.googlevideo.com" in url
+    
+    if is_youtube:
         cap = FFmpegCapture(url)
         if cap.open():
             return cap
@@ -265,7 +267,8 @@ class VideoProcessor:
 
 
     def get_actual_url(self):
-        if self.source_type in ["youtube", "youtube_live"]:
+        is_youtube = self.source_type in ["youtube", "youtube_live"] or "youtube.com" in self.source_url or "youtu.be" in self.source_url
+        if is_youtube:
             yt_info = YouTubeExtractor.get_stream_url(self.source_url)
             if yt_info.get("url"):
                 return yt_info["url"]
