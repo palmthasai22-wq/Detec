@@ -90,6 +90,15 @@ class VideoProcessor:
         self.conf_thresh = channel.confidence_threshold or 0.25
         self.target_classes = channel.object_classes or [0, 1, 2, 3, 5, 7]
         
+        # Save models in UPLOAD_DIR (which maps to /data) to persist across Railway deployments
+        from .routers.streams import UPLOAD_DIR
+        model_path = UPLOAD_DIR / f"{self.ai_model_name}.pt"
+        try:
+            self.model = YOLO(str(model_path))
+        except Exception:
+            print(f"Fallback to yolo11m.pt for channel {self.channel_id}")
+            self.model = YOLO("yolo11m.pt")
+        
         self.running = False
         self.latest_frame = None
         self.frame_version = 0
