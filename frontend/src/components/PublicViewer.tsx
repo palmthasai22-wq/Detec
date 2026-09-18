@@ -8,6 +8,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface StreamInfo {
   hls_url: string;
+  mjpeg_url?: string;
   name: string;
 }
 
@@ -77,7 +78,11 @@ export const PublicViewer: React.FC = () => {
     <div className="w-screen h-screen bg-black overflow-hidden relative font-sans">
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="w-full h-full">
-          <HlsPlayer url={streamInfo.hls_url} />
+          {streamInfo.mjpeg_url ? (
+            <img src={`${API_URL}${streamInfo.mjpeg_url}`} className="w-full h-full object-contain" alt="Live Feed" />
+          ) : (
+            <HlsPlayer url={streamInfo.hls_url} />
+          )}
         </div>
       </div>
       

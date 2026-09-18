@@ -29,7 +29,8 @@ def get_public_stream(slug: str, db: Session = Depends(get_db)):
         "channel_name": channel.name,
         "status": channel.status,
         "hls_url": f"http://localhost:8888/{slug}/index.m3u8",
-        "webrtc_url": f"http://localhost:8889/{slug}/whep"
+        "webrtc_url": f"http://localhost:8889/{slug}/whep",
+        "mjpeg_url": f"/api/streams/{channel.id}"
     }
 
 @router.get("/{slug}/stats")
