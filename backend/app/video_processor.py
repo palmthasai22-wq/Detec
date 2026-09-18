@@ -295,13 +295,21 @@ class VideoProcessor:
         # Open capture in a background thread
         cap = await asyncio.to_thread(_open_capture, actual_url, self.source_type)
         
+        fps = await asyncio.to_thread(cap.get, cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0 or math.isnan(fps):
+            fps = 30.0
+        frame_delay = 1.0 / fps
+        
         self.running = True
         
         processing_task = None
         last_stats = None
         last_detections = None
         
+        import time
         while self.running and await asyncio.to_thread(cap.isOpened):
+            start_time = time.time()
+            
             success, raw_frame = await asyncio.to_thread(cap.read)
             if not success:
                 if self.source_type == "mp4":
@@ -354,7 +362,7 @@ class VideoProcessor:
                 
                 # Draw Stats Text
                 cv2.rectangle(annotated_frame, (0, 0), (int(w * display_scale), 100), (0, 0, 0), -1)
-                cv2.putText(annotated_frame, f"DENSITY: {last_stats['channel_stats']['density_index']}/100", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"DENSITY: {last_stats['channel_stats']['density_index']}%", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"TRAFFIC: {last_stats['channel_stats']['traffic_level']}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 
             ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
@@ -364,7 +372,9 @@ class VideoProcessor:
                     self.frame_version += 1
                     self.frame_condition.notify_all()
             
-            await asyncio.sleep(0.01)
+            elapsed = time.time() - start_time
+            sleep_time = max(0.005, frame_delay - elapsed)
+            await asyncio.sleep(sleep_time)
                 
         cap.release()
         self.running = False
