@@ -219,13 +219,19 @@ class VideoProcessor:
         if zone_stats_list:
             avg_density = sum(s["density_index"] for s in zone_stats_list) // len(zone_stats_list)
             avg_traffic = sum(s["traffic_index"] for s in zone_stats_list) // len(zone_stats_list)
+        else:
+            # Fallback: estimate density based on total objects if no zones are drawn
+            total_objs = len(tracked_detections)
+            # 18 cars -> ~40% density (45 cars max capacity)
+            avg_density = min(100, int((total_objs / 45.0) * 100))
+            avg_traffic = avg_density
             
         channel_stats = {
             "object_counts": total_counts,
             "total_objects": len(tracked_detections),
             "density_index": avg_density,
             "traffic_index": avg_traffic,
-            "traffic_level": "NORMAL" if avg_traffic < 25 else "HIGH" # Simplified aggregate
+            "traffic_level": "FLOWING" if avg_traffic < 40 else ("SLOWING" if avg_traffic < 75 else "JAMMED")
         }
         
         # Prepare broadcast payload
