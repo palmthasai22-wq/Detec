@@ -74,6 +74,14 @@ export const PublicViewer: React.FC = () => {
     );
   }
 
+  const getTrafficStatus = (density: number) => {
+    if (density < 40) return { label: 'FLOWING', color: 'text-green-400' };
+    if (density < 75) return { label: 'SLOWING', color: 'text-yellow-400' };
+    return { label: 'JAMMED', color: 'text-red-500' };
+  };
+
+  const trafficStatus = stats ? getTrafficStatus(stats.density_index) : null;
+
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative font-sans">
       <div className="absolute inset-0 flex items-center justify-center">
@@ -88,32 +96,32 @@ export const PublicViewer: React.FC = () => {
       
       {/* Overlay Stats */}
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-10 pointer-events-none">
-        {stats && (
+        {stats && trafficStatus && (
           <div className="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-white/10 text-white shadow-lg flex flex-col gap-2 min-w-[150px]">
             <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-white/10 pb-1">Live Analysis</h2>
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-gray-300">
-                <BarChart2 size={12} className="text-blue-400" />
+                <BarChart2 size={12} className={trafficStatus.color} />
                 <span className="text-xs font-medium">Density Index</span>
               </div>
-              <span className="font-mono text-xs font-bold text-blue-400">{stats.density_index.toFixed(2)}%</span>
+              <span className={`font-mono text-xs font-bold ${trafficStatus.color}`}>{stats.density_index.toFixed(2)}%</span>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-gray-300">
-                <Activity size={12} className="text-green-400" />
+                <Activity size={12} className={trafficStatus.color} />
                 <span className="text-xs font-medium">Traffic Status</span>
               </div>
-              <span className="font-semibold text-green-400 capitalize text-xs">{stats.traffic_level}</span>
+              <span className={`font-semibold capitalize text-xs ${trafficStatus.color}`}>{trafficStatus.label}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-gray-300">
-                <Users size={12} className="text-purple-400" />
+                <Users size={12} className="text-gray-400" />
                 <span className="text-xs font-medium">Vehicles</span>
               </div>
-              <span className="font-mono text-xs font-bold text-purple-400">{stats.total_objects}</span>
+              <span className="font-mono text-xs font-bold text-gray-200">{stats.total_objects}</span>
             </div>
           </div>
         )}
