@@ -109,8 +109,10 @@ def test_connection(payload: dict):
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
     
+    is_youtube = "youtube.com" in url or "youtu.be" in url
+    
     # Pre-process youtube URLs
-    if "youtube.com" in url or "youtu.be" in url:
+    if is_youtube:
         yt_info = YouTubeExtractor.get_stream_url(url)
         if yt_info.get("error"):
             return {"success": False, "error": f"YouTube Extractor Error: {yt_info['error']}"}
@@ -120,11 +122,13 @@ def test_connection(payload: dict):
         return {"success": False, "error": "Could not extract stream URL"}
     
     try:
-        if "youtube.com" in url or "youtu.be" in url:
-            from .video_processor import FFmpegCapture
+        if is_youtube:
+            from ..video_processor import FFmpegCapture
             cap = FFmpegCapture(url)
             if not cap.open():
                 return {"success": False, "error": "Could not open FFmpeg capture for YouTube"}
+            cap.pipe.terminate()
+            return {"success": True}
         else:
             cap = cv2.VideoCapture(url)
             if not cap.isOpened():
