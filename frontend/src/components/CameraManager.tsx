@@ -19,6 +19,8 @@ interface Camera {
   embed_url?: string;
   embed_mode?: 'image' | 'iframe';
   public_id: string;
+  is_shared?: boolean;
+  public_url_slug?: string;
 }
 
 const parseEmbedInput = (input: string) => {
@@ -289,14 +291,51 @@ const CameraManager = () => {
             <div className="bg-black/50 rounded-lg p-3 mb-4 border border-slate-800">
               <p className="text-xs font-mono text-slate-400 truncate" title={camera.source_url}>{camera.source_url}</p>
             </div>
-            {camera.source_type !== 'embed' && camera.public_id && (
-              <div className="mb-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">URL จอมอนิเตอร์</p>
-                <div className="flex gap-2">
-                  <a href={getApiUrl(`/live/${camera.public_id}`)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-mono text-[10px] text-cyan-300 hover:text-cyan-200">
-                    {getApiUrl(`/live/${camera.public_id}`)}
-                  </a>
-                  <button type="button" onClick={() => navigator.clipboard.writeText(getApiUrl(`/live/${camera.public_id}`))} className="rounded bg-cyan-600/20 px-2 py-1 text-[10px] font-semibold text-cyan-300 hover:bg-cyan-600/30">คัดลอก</button>
+            {camera.source_type !== 'embed' && (
+              <div className="mb-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-4">
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">URL วิดีโอดิบสำหรับแผนที่ (MJPEG Direct)</p>
+                  <div className="flex gap-2">
+                    <div className="min-w-0 flex-1 truncate font-mono text-[10px] text-cyan-300 bg-black/50 px-2 py-1 rounded border border-cyan-500/20">
+                      {getApiUrl(`/api/streams/${camera.id}`)}
+                    </div>
+                    <button type="button" onClick={() => navigator.clipboard.writeText(getApiUrl(`/api/streams/${camera.id}`))} className="rounded bg-cyan-600/20 px-2 py-1 text-[10px] font-semibold text-cyan-300 hover:bg-cyan-600/30 whitespace-nowrap">คัดลอกลิงก์</button>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">ใช้ลิงก์นี้เมื่อแผนที่ต้องการไฟล์ภาพ/วิดีโอ (เช่น <code>&lt;img src="..."&gt;</code>)</p>
+                </div>
+                
+                <div className="pt-3 border-t border-slate-700/50">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">Public Viewer URL (หน้าเว็บ Dashboard)</p>
+                    <button 
+                      type="button" 
+                      onClick={async () => {
+                        try {
+                          await axios.post(getApiUrl(`/api/channels/${camera.id}/share`));
+                          fetchCameras(); // Refresh the list
+                        } catch (e) {
+                          alert('Failed to toggle share');
+                        }
+                      }}
+                      className={`text-[10px] px-2 py-1 rounded font-semibold ${camera.is_shared ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
+                    >
+                      {camera.is_shared ? 'ปิดการแชร์' : 'เปิดการแชร์ (Enable Public Link)'}
+                    </button>
+                  </div>
+                  
+                  {camera.is_shared && camera.public_url_slug ? (
+                    <div>
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1 truncate font-mono text-[10px] text-blue-300 bg-black/50 px-2 py-1 rounded border border-blue-500/20">
+                          {window.location.origin}/view/{camera.public_url_slug}
+                        </div>
+                        <button type="button" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/view/${camera.public_url_slug}`)} className="rounded bg-blue-600/20 px-2 py-1 text-[10px] font-semibold text-blue-300 hover:bg-blue-600/30 whitespace-nowrap">คัดลอกลิงก์</button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-500">ใช้ลิงก์นี้เมื่อแผนที่ต้องการหน้าเว็บ iframe</p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 italic">กด "เปิดการแชร์" เพื่อสร้างลิงก์สำหรับ iframe</p>
+                  )}
                 </div>
               </div>
             )}
