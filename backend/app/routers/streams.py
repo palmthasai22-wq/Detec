@@ -120,12 +120,18 @@ def test_connection(payload: dict):
         return {"success": False, "error": "Could not extract stream URL"}
     
     try:
-        cap = cv2.VideoCapture(url)
-        if not cap.isOpened():
-            return {"success": False, "error": "Could not open stream. Check URL/credentials."}
+        if "youtube.com" in url or "youtu.be" in url:
+            from .video_processor import FFmpegCapture
+            cap = FFmpegCapture(url)
+            if not cap.open():
+                return {"success": False, "error": "Could not open FFmpeg capture for YouTube"}
+        else:
+            cap = cv2.VideoCapture(url)
+            if not cap.isOpened():
+                return {"success": False, "error": "Could not open stream. Check URL/credentials."}
         
-        ret, frame = cap.read()
-        if not ret:
+        success, frame = cap.read()
+        if not success:
             cap.release()
             return {"success": False, "error": "Stream opened but could not read frame."}
         

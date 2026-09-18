@@ -29,6 +29,7 @@ class FFmpegCapture:
         # We probe first or just hardcode 720p for fast loading
         command = [
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+            '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '-i', self.url,
             '-f', 'image2pipe', '-pix_fmt', 'bgr24',
             '-vcodec', 'rawvideo',
