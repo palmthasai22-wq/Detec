@@ -46,7 +46,7 @@ async def websocket_endpoint(websocket: WebSocket):
 def get_live_traffic(db: Session = Depends(get_db)):
     """Returns the live traffic stats and coordinates for all cameras."""
     from ..stream_manager import stream_manager
-    cameras = db.query(models.Camera).all()
+    cameras = db.query(models.Channel).all()
     results = []
     for cam in cameras:
         # Check if stream is active and has stats
