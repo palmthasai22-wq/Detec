@@ -102,6 +102,7 @@ class VideoProcessor:
         
         self.running = False
         self.latest_frame = None
+        self.latest_stats = None
         self.frame_version = 0
         self.frame_condition = asyncio.Condition()
         self.viewer_lock = asyncio.Lock()
@@ -336,6 +337,7 @@ class VideoProcessor:
                     try:
                         last_detections, stats = processing_task.result()
                         last_stats = stats
+                        self.latest_stats = stats
                         try:
                             broadcast_queue.put_nowait(stats)
                         except asyncio.QueueFull:
