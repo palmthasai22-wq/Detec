@@ -42,7 +42,7 @@ const CameraManager = () => {
   const [submitError, setSubmitError] = useState('');
   const [formData, setFormData] = useState<any>({
     name: '', source_type: 'rtsp', source_url: '', 
-    density_green_threshold: 10, density_yellow_threshold: 20,
+    density_green_threshold: 5, density_yellow_threshold: 10,
     confidence_threshold: 0.15,
     engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '',
     lat: '', lng: ''
@@ -83,7 +83,7 @@ const CameraManager = () => {
       fetchCameras();
       setShowForm(false);
       setEmbedInput('');
-      setFormData({ name: '', source_type: 'rtsp', source_url: '', density_green_threshold: 10, density_yellow_threshold: 20, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
+      setFormData({ name: '', source_type: 'rtsp', source_url: '', density_green_threshold: 5, density_yellow_threshold: 10, confidence_threshold: 0.15, engine: 'yolo', roboflow_model_id: '', roboflow_api_key: '', lat: '', lng: '' });
       setTestResult(null);
     } catch (err: any) {
       const detail = err.response?.data?.detail;
@@ -106,8 +106,8 @@ const CameraManager = () => {
     try {
       const res = await axios.post('/api/streams/test-connection', { url: formData.source_url });
       setTestResult({
-        success: res.data.status === 'success',
-        message: res.data.message === 'Connection successful' ? 'เชื่อมต่อสำเร็จ' : (res.data.message || 'เชื่อมต่อสำเร็จ')
+        success: res.data.success === true || res.data.status === 'success',
+        message: res.data.error || res.data.message || (res.data.success ? 'เชื่อมต่อสำเร็จ' : 'เชื่อมต่อล้มเหลว')
       });
     } catch (err: any) {
       setTestResult({
@@ -188,7 +188,7 @@ const CameraManager = () => {
                 <div className="flex gap-2">
                   <input required={!embedInput.trim()} className="flex-1 bg-black/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-sm"
                     value={formData.source_url} onChange={e => setFormData({...formData, source_url: e.target.value})} 
-                    placeholder={formData.source_type === 'rtsp' ? 'rtsp://admin:pass@192.168.1.100/stream' : 'rtmp://127.0.0.1/live/drone'} />
+                    placeholder={formData.source_type === 'rtsp' ? 'rtsp://admin:pass@192.168.1.100/stream' : formData.source_type.startsWith('youtube') ? 'https://www.youtube.com/watch?v=...' : 'rtmp://127.0.0.1/live/drone'} />
                   
                   {formData.source_type !== 'file' && (
                     <button type="button" onClick={handleTestConnection} disabled={testing || !formData.source_url}
@@ -249,12 +249,12 @@ const CameraManager = () => {
                     <div>
                       <label className="block text-[10px] font-bold text-yellow-500 uppercase tracking-wider mb-2">แจ้งเตือนสีเหลือง (คัน)</label>
                       <input type="number" required className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white" 
-                        value={formData.density_yellow_threshold} onChange={e => setFormData({...formData, density_yellow_threshold: parseInt(e.target.value)})} />
+                        min="1" value={formData.density_green_threshold} onChange={e => setFormData({...formData, density_green_threshold: parseInt(e.target.value)})} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-red-500 uppercase tracking-wider mb-2">แจ้งเตือนสีแดง (คัน)</label>
                       <input type="number" required className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-white" 
-                        value={formData.density_green_threshold} onChange={e => setFormData({...formData, density_green_threshold: parseInt(e.target.value)})} />
+                        min={formData.density_green_threshold + 1} value={formData.density_yellow_threshold} onChange={e => setFormData({...formData, density_yellow_threshold: parseInt(e.target.value)})} />
                     </div>
                   </div>
                 </div>

@@ -46,7 +46,7 @@ class Channel(Base):
     source_transport = Column(String, nullable=True)
     loop_playback = Column(Boolean, default=True)
     ai_model = Column(String, default="yolo11m")
-    confidence_threshold = Column(Float, default=0.25)
+    confidence_threshold = Column(Float, default=0.15)
     object_classes = Column(JSON, nullable=True)
     status = Column(String, default=ChannelStatus.offline.value)
     is_shared = Column(Boolean, default=False)
@@ -66,8 +66,8 @@ class Channel(Base):
     roboflow_api_key = Column(String, nullable=True)
     counting_line = Column(JSON, nullable=True)
     wait_zone = Column(JSON, nullable=True)
-    density_green_threshold = Column(Integer, default=10)
-    density_yellow_threshold = Column(Integer, default=20)
+    density_green_threshold = Column(Integer, default=5)
+    density_yellow_threshold = Column(Integer, default=10)
 
     zones = relationship("Zone", back_populates="channel")
 

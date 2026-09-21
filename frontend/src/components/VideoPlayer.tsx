@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { Settings, Users, Car, AlertTriangle, Truck } from 'lucide-react';
+import { Settings, Users, Car, Truck, Maximize2, Minimize2 } from 'lucide-react';
 import { getApiUrl, getWebSocketUrl } from '../config/api';
 
 interface VideoPlayerProps {
@@ -26,7 +26,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
   const [stats, setStats] = useState<StreamStats | null>(null);
   const [confidence, setConfidence] = useState<number>(15);
   const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Fetch initial confidence
@@ -58,6 +60,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
     };
   }, [cameraId]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === playerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await playerRef.current?.requestFullscreen();
+      }
+    } catch (error) {
+      console.error('Fullscreen is not available:', error);
+    }
+  };
+
   const handleConfidenceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value);
     setConfidence(val);
@@ -76,7 +98,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
   const currentDensity = stats ? densityConfig[stats.density] : densityConfig.green;
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center bg-black group overflow-hidden">
+    <div
+      ref={playerRef}
+      onDoubleClick={toggleFullscreen}
+      className="relative w-full h-full min-h-0 flex flex-col items-center justify-center bg-black group overflow-hidden fullscreen:w-screen fullscreen:h-screen"
+    >
       {/* Video Feed */}
       {embedUrl && embedMode === 'iframe' ? (
         <iframe
@@ -99,8 +125,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
         />
       )}
       
-      {/* Settings Gear - Top Right */}
-      <div className="absolute top-4 right-4 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Player controls - Top Right */}
+      <div className="absolute top-4 right-4 z-30 flex gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="bg-black/60 p-2 rounded-full text-slate-300 hover:text-white border border-slate-600 backdrop-blur"
+          title={isFullscreen ? 'ออกจากเต็มจอ' : 'แสดงวิดีโอเต็มจอ'}
+          aria-label={isFullscreen ? 'ออกจากเต็มจอ' : 'แสดงวิดีโอเต็มจอ'}
+        >
+          {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+        </button>
         <button 
           onClick={() => setShowSettings(!showSettings)}
           className="bg-black/60 p-2 rounded-full text-slate-300 hover:text-white border border-slate-600 backdrop-blur"
@@ -132,21 +167,36 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
       
       {/* HUD Overlay - Bottom Panel */}
       {stats && (
-        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end gap-4">
+        <div className="absolute bottom-3 left-3 right-3 flex flex-wrap justify-between items-end gap-2 sm:bottom-4 sm:left-4 sm:right-4 sm:gap-4">
           
-          {/* Main Stats Block */}
-          <div className="bg-black/60 border border-slate-700/50 rounded-lg p-3 backdrop-blur-sm flex gap-6">
-            <div className="flex flex-col">
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mb-1">ปริมาณรถทั้งหมดในกล้อง</span>
-              <span className="text-2xl font-mono font-bold text-white leading-none">{stats.current_vehicles} <span className="text-sm text-slate-500 font-sans">คัน</span></span>
+          {/* People and vehicle counts */}
+          <div className="bg-black/60 border border-slate-700/50 rounded-lg p-3 backdrop-blur-sm flex gap-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-sky-400" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">คน</span>
+                <span className="text-xl font-mono font-bold text-white leading-none">{stats.person_count || 0}</span>
+              </div>
+            </div>
+            <div className="w-px bg-slate-700/60" />
+            <div className="flex items-center gap-2">
+              <Car className="w-5 h-5 text-green-400" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">รถทั้งหมด</span>
+                <span className="text-xl font-mono font-bold text-white leading-none">{stats.current_vehicles}</span>
+              </div>
             </div>
           </div>
 
           {/* Counts */}
           <div className="bg-black/60 border border-slate-700/50 px-4 py-3 rounded-lg backdrop-blur-sm flex items-center gap-4">
             <div className="flex flex-col">
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">จำนวนรถบนจอ</span>
-              <span className="text-xl font-bold text-white leading-none">{stats.current_vehicles} <span className="text-xs text-slate-500">คัน</span></span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">แยกประเภทรถ</span>
+              <span className="text-xs font-bold text-white leading-none flex items-center gap-2">
+                <Car className="w-3 h-3 text-green-400" /> {stats.car_count || 0}
+                <span className="text-slate-500">มอเตอร์ไซค์ {stats.motorcycle_count || 0}</span>
+                <Truck className="w-3 h-3 text-amber-400" /> {stats.truck_count || 0}
+              </span>
             </div>
             
             {(stats.in_count > 0 || stats.out_count > 0) && (
@@ -164,16 +214,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId, embedUrl, embedMode
           <div className="bg-black/60 border border-slate-700/50 px-4 py-3 rounded-lg backdrop-blur-sm flex-1 max-w-md">
             <div className="flex justify-between items-center mb-1.5">
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">ดัชนีรถติด (Jam Index)</span>
-              <span className={`text-xs font-mono font-bold ${stats.congestion_index > 75 ? 'text-red-400' : stats.congestion_index > 40 ? 'text-yellow-400' : 'text-green-400'}`}>
+              <span className={`text-xs font-mono font-bold ${stats.congestion_index >= 75 ? 'text-red-400' : stats.congestion_index >= 40 ? 'text-yellow-400' : 'text-green-400'}`}>
                 {stats.congestion_index}% 
                 <span className="ml-1 text-[10px] font-sans">
-                  {stats.congestion_index > 75 ? '(ติดขัด)' : stats.congestion_index > 40 ? '(ชะลอตัว)' : '(คล่องตัว)'}
+                  {stats.congestion_index >= 75 ? '(ติดขัด)' : stats.congestion_index >= 40 ? '(ชะลอตัว)' : '(คล่องตัว)'}
                 </span>
               </span>
             </div>
             <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <div 
-                className={`h-full transition-all duration-500 ease-out ${stats.congestion_index > 75 ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' : stats.congestion_index > 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                className={`h-full transition-all duration-500 ease-out ${stats.congestion_index >= 75 ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' : stats.congestion_index >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
                 style={{ width: `${stats.congestion_index}%` }}
               ></div>
             </div>

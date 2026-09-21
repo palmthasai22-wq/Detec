@@ -115,35 +115,45 @@ def test_connection(payload: dict):
     if is_youtube:
         yt_info = YouTubeExtractor.get_stream_url(url)
         if yt_info.get("error"):
-            return {"success": False, "error": f"YouTube Extractor Error: {yt_info['error']}"}
+            return {"success": False, "status": "error", "error": f"YouTube Extractor Error: {yt_info['error']}"}
         url = yt_info.get("url", url)
         
     if not url:
-        return {"success": False, "error": "Could not extract stream URL"}
+        return {"success": False, "status": "error", "error": "Could not extract stream URL"}
     
     try:
         if is_youtube:
             from ..video_processor import FFmpegCapture
             cap = FFmpegCapture(url)
             if not cap.open():
-                return {"success": False, "error": "Could not open FFmpeg capture for YouTube"}
-            cap.pipe.terminate()
-            return {"success": True}
+                return {"success": False, "status": "error", "error": "Could not open FFmpeg capture for YouTube"}
+            success, frame = cap.read()
+            cap.release()
+            if not success:
+                return {"success": False, "status": "error", "error": "YouTube connected but no video frame was received"}
+            h, w = frame.shape[:2]
+            return {
+                "success": True,
+                "status": "success",
+                "resolution": f"{w}x{h}",
+                "is_live": yt_info.get("is_live", False),
+                "message": f"Connected to YouTube{' Live' if yt_info.get('is_live') else ''}! Resolution: {w}x{h}",
+            }
         else:
             cap = cv2.VideoCapture(url)
             if not cap.isOpened():
-                return {"success": False, "error": "Could not open stream. Check URL/credentials."}
+                return {"success": False, "status": "error", "error": "Could not open stream. Check URL/credentials."}
         
         success, frame = cap.read()
         if not success:
             cap.release()
-            return {"success": False, "error": "Stream opened but could not read frame."}
+            return {"success": False, "status": "error", "error": "Stream opened but could not read frame."}
         
         h, w = frame.shape[:2]
         cap.release()
-        return {"success": True, "resolution": f"{w}x{h}", "message": f"Connected! Resolution: {w}x{h}"}
+        return {"success": True, "status": "success", "resolution": f"{w}x{h}", "message": f"Connected! Resolution: {w}x{h}"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "status": "error", "error": str(e)}
 
 @router.post("/{camera_id}/stop")
 def stop_video_stream(camera_id: int):

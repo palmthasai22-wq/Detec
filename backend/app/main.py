@@ -24,6 +24,23 @@ if not admin_user:
 else:
     # Force reset password to 'admin' in case of previous broken hashes
     admin_user.hashed_password = get_password_hash("admin")
+
+# Migrate channels that still use the previous application defaults. This
+# applies the more sensitive small-object and small-queue behavior to existing
+# installations without overwriting custom threshold values.
+db.query(models.Channel).filter(
+    models.Channel.confidence_threshold == 0.25
+).update({models.Channel.confidence_threshold: 0.15}, synchronize_session=False)
+db.query(models.Channel).filter(
+    models.Channel.density_green_threshold == 10,
+    models.Channel.density_yellow_threshold == 20,
+).update(
+    {
+        models.Channel.density_green_threshold: 5,
+        models.Channel.density_yellow_threshold: 10,
+    },
+    synchronize_session=False,
+)
 db.commit()
 db.close()
 

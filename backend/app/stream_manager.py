@@ -61,7 +61,8 @@ class StreamManager:
             if "confidence_threshold" in update_data:
                 vp.conf_thresh = update_data["confidence_threshold"]
             if "object_classes" in update_data:
-                vp.target_classes = update_data["object_classes"] or [0,1,2,3,5,7]
+                # Person detection is always enabled alongside road vehicles.
+                vp.target_classes = sorted(set(update_data["object_classes"] or [0,1,2,3,5,7]) | {0})
         
     async def _process_stats(self, channel_id: int):
         queue = self.stats_queues[channel_id]

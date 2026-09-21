@@ -14,7 +14,7 @@ class ChannelBase(BaseModel):
     source_transport: Optional[str] = None
     loop_playback: Optional[bool] = True
     ai_model: Optional[str] = "yolo11m"
-    confidence_threshold: Optional[float] = 0.25
+    confidence_threshold: Optional[float] = 0.15
     object_classes: Optional[List[int]] = None
     status: Optional[ChannelStatus] = ChannelStatus.offline
     is_shared: Optional[bool] = False
@@ -30,8 +30,8 @@ class ChannelBase(BaseModel):
     roboflow_api_key: Optional[str] = None
     counting_line: Optional[Any] = None
     wait_zone: Optional[Any] = None
-    density_green_threshold: Optional[int] = 10
-    density_yellow_threshold: Optional[int] = 20
+    density_green_threshold: Optional[int] = 5
+    density_yellow_threshold: Optional[int] = 10
 
 class ChannelCreate(ChannelBase):
     name: str
