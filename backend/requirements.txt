@@ -9,7 +9,7 @@ websockets
 pydantic
 pydantic-settings
 alembic
-yt-dlp>=2025.1.15
+yt-dlp[default]>=2025.1.15
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt==3.2.2

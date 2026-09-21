@@ -6,16 +6,20 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+FROM node:22-bookworm-slim AS node-runtime
+
 FROM python:3.10-slim
 
-# Install system dependencies for OpenCV and FFmpeg, plus nodejs for yt-dlp JS execution
+# Install system dependencies for OpenCV and FFmpeg.
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsm6 \
     libxext6 \
     libgl1 \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp's EJS challenge solver requires Node 22+.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 WORKDIR /app
 
